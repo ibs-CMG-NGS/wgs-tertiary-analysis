@@ -5,9 +5,60 @@
 
 set -e  # 오류 발생 시 중단
 
+# 기본 설정 파일
+CONFIG_FILE="${SNAKEMAKE_CONFIG:-config/config.yaml}"
+
+# 도움말
+show_help() {
+    cat << EOF
+PacBio HiFi WGS 3차 분석 파이프라인 - 설정 확인 스크립트
+
+사용법:
+    $0 [--config FILE]
+
+옵션:
+    --config FILE    설정 파일 경로 (기본: config/config.yaml)
+    -h, --help       이 도움말 표시
+
+환경 변수:
+    SNAKEMAKE_CONFIG    설정 파일 경로 (기본: config/config.yaml)
+
+예제:
+    # 기본 설정 파일 검증
+    $0
+
+    # 커스텀 설정 파일 검증
+    $0 --config config/config_hifisolve.yaml
+
+    # 환경 변수로 설정
+    SNAKEMAKE_CONFIG=config/config_hifisolve.yaml $0
+EOF
+}
+
+# 인자 파싱
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --config)
+            CONFIG_FILE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "알 수 없는 옵션: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
 echo "================================================================================"
 echo "PacBio HiFi WGS 3차 분석 파이프라인 - 설정 확인"
 echo "================================================================================"
+echo "설정 파일: $CONFIG_FILE"
+echo ""
 
 # 색상 코드
 GREEN='\033[0;32m'
@@ -60,7 +111,7 @@ echo ""
 echo "2. 파이프라인 파일 확인..."
 echo "-------------------------------------------"
 
-check_file "config/config.yaml" || ALL_OK=false
+check_file "$CONFIG_FILE" || ALL_OK=false
 check_file "Snakefile" || ALL_OK=false
 check_file "scripts/dmr_analysis.R" || ALL_OK=false
 
@@ -69,12 +120,14 @@ echo "3. config.yaml 검증..."
 echo "-------------------------------------------"
 
 # Python을 사용한 YAML 파싱 검증
-python3 << 'PYEOF'
+python3 << PYEOF
 import yaml
 import sys
 
+CONFIG_FILE = "${CONFIG_FILE}"
+
 try:
-    with open('config/config.yaml', 'r') as f:
+    with open(CONFIG_FILE, 'r') as f:
         config = yaml.safe_load(f)
     
     # 필수 키 확인
@@ -104,10 +157,10 @@ try:
     print(f"  - WDL 출력 경로: {config['paths']['wdl_out_dir']}")
     
 except yaml.YAMLError as e:
-    print(f"\033[0;31m✗\033[0m config/config.yaml 파싱 오류: {e}")
+    print(f"\033[0;31m✗\033[0m {CONFIG_FILE} 파싱 오류: {e}")
     sys.exit(1)
 except FileNotFoundError:
-    print("\033[0;31m✗\033[0m config/config.yaml 파일을 찾을 수 없습니다")
+    print(f"\033[0;31m✗\033[0m {CONFIG_FILE} 파일을 찾을 수 없습니다")
     sys.exit(1)
 PYEOF
 
@@ -119,8 +172,8 @@ echo ""
 echo "4. 입력 파일 확인..."
 echo "-------------------------------------------"
 
-# config/config.yaml에서 wdl_out_dir 추출
-WDL_OUT_DIR=$(python3 -c "import yaml; config=yaml.safe_load(open('config/config.yaml')); print(config['paths']['wdl_out_dir'])")
+# config 파일에서 wdl_out_dir 추출
+WDL_OUT_DIR=$(python3 -c "import yaml; config=yaml.safe_load(open('${CONFIG_FILE}')); print(config['paths']['wdl_out_dir'])")
 
 if [ -d "$WDL_OUT_DIR" ]; then
     echo -e "${GREEN}✓${NC} WDL 출력 디렉토리: $WDL_OUT_DIR"

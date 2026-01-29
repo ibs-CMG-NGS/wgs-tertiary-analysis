@@ -8,6 +8,7 @@ set -e
 # 기본 설정
 CORES=${CORES:-16}
 USE_SINGULARITY=${USE_SINGULARITY:-true}
+CONFIG_FILE=${SNAKEMAKE_CONFIG:-"config/config.yaml"}
 
 # 색상 코드
 GREEN='\033[0;32m'
@@ -27,6 +28,7 @@ PacBio HiFi WGS 3차 분석 파이프라인 실행 스크립트
     -h, --help              이 도움말 표시
     -d, --dry-run           Dry-run 모드 (실제 실행 안 함)
     -c, --cores N           사용할 코어 수 (기본: 16)
+    --config FILE           설정 파일 경로 (기본: config/config.yaml)
     -t, --target RULE       특정 규칙만 실행
     --unlock                워크플로우 잠금 해제
     --dag                   DAG 그래프 생성 (dag.pdf)
@@ -35,6 +37,9 @@ PacBio HiFi WGS 3차 분석 파이프라인 실행 스크립트
 예제:
     # Dry-run
     $0 --dry-run
+
+    # 커스텀 설정 파일 사용
+    $0 --config config/config_hifisolve.yaml --cores 8
 
     # 전체 파이프라인 실행 (8 코어)
     $0 --cores 8
@@ -48,6 +53,7 @@ PacBio HiFi WGS 3차 분석 파이프라인 실행 스크립트
 환경 변수:
     CORES                   사용할 코어 수 (기본: 16)
     USE_SINGULARITY         Singularity 사용 여부 (기본: true)
+    SNAKEMAKE_CONFIG        설정 파일 경로 (기본: config/config.yaml)
 
 EOF
 }
@@ -71,6 +77,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         -c|--cores)
             CORES="$2"
+            shift 2
+            ;;
+        --config)
+            CONFIG_FILE="$2"
+            export SNAKEMAKE_CONFIG="$2"
             shift 2
             ;;
         -t|--target)
@@ -97,12 +108,21 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# 설정 파일 확인
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo -e "${YELLOW}경고: 설정 파일을 찾을 수 없습니다: $CONFIG_FILE${NC}"
+    echo "config/config.example.yaml을 복사하여 설정 파일을 만드세요:"
+    echo "  cp config/config.example.yaml $CONFIG_FILE"
+    exit 1
+fi
+
 # 로그 디렉토리 생성
 mkdir -p logs
 
 echo -e "${BLUE}================================================================================${NC}"
 echo -e "${BLUE}PacBio HiFi WGS 3차 분석 파이프라인${NC}"
 echo -e "${BLUE}================================================================================${NC}"
+echo -e "설정 파일: ${GREEN}$CONFIG_FILE${NC}"
 echo ""
 
 # 잠금 해제

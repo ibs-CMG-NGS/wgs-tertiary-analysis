@@ -7,7 +7,9 @@ import csv
 from pathlib import Path
 
 # 설정 파일 로드
-configfile: "config/config.yaml"
+# 환경 변수 SNAKEMAKE_CONFIG로 지정 가능, 기본값: config/config.yaml
+CONFIG_FILE = os.environ.get("SNAKEMAKE_CONFIG", "config/config.yaml")
+configfile: CONFIG_FILE
 
 # 전체 샘플 목록 생성
 ALL_SAMPLES = config["samples"]["control"] + config["samples"]["experimental"]

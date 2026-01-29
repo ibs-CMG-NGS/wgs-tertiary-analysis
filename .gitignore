@@ -39,7 +39,7 @@ rulegraph.pdf
 # ================================================================================
 
 # 실제 설정 파일 (예제는 유지)
-config/config.yaml
+config/config*.yaml
 !config/config.example.yaml
 !config/cluster_config.yaml
 
