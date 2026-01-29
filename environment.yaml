@@ -10,7 +10,7 @@ channels:
 
 dependencies:
   # 핵심 워크플로우 엔진
-  - python=3.10
+  - python=3.11
   - snakemake>=7.32.4
   
   # 컨테이너 지원 (Singularity/Apptainer는 시스템에 별도 설치 필요)
