@@ -221,12 +221,13 @@ rule filter_sv:
     shell:
         """
         # svpack을 사용한 SV 필터링 (프로젝트 내 스크립트)
+        # svpack filter는 표준 출력으로 결과를 출력하므로 리디렉션 필요
         python scripts/svpack filter \
-            --input {input.vcf} \
-            --output {output.filtered_sv} \
             --min-svlen {params.min_sv_size} \
             {params.pass_only_flag} \
-            2> {log}
+            {input.vcf} \
+            2> {log} \
+            | bgzip -c > {output.filtered_sv}
         
         # 인덱스 생성
         tabix -p vcf {output.filtered_sv} 2>> {log}

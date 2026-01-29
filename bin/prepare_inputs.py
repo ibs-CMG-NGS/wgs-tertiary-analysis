@@ -62,35 +62,54 @@ def find_required_files(out_dir, sample_id):
     }
     
     # Small variant VCF
-    vcf_pattern = os.path.join(out_dir, "phased_small_variant_vcf")
-    if os.path.exists(vcf_pattern):
-        files['phased_small_variant_vcf'] = vcf_pattern
-        # 인덱스 찾기
-        if os.path.exists(vcf_pattern + ".tbi"):
-            files['phased_small_variant_vcf_index'] = vcf_pattern + ".tbi"
-        elif os.path.exists(vcf_pattern + ".csi"):
-            files['phased_small_variant_vcf_index'] = vcf_pattern + ".csi"
+    vcf_dir = os.path.join(out_dir, "phased_small_variant_vcf")
+    if os.path.exists(vcf_dir) and os.path.isdir(vcf_dir):
+        # 디렉토리 내부의 VCF 파일 찾기
+        vcf_files = glob.glob(os.path.join(vcf_dir, "*.vcf.gz"))
+        if vcf_files:
+            vcf_file = vcf_files[0]  # 첫 번째 파일 사용
+            files['phased_small_variant_vcf'] = vcf_file
+            # 인덱스 찾기
+            if os.path.exists(vcf_file + ".tbi"):
+                files['phased_small_variant_vcf_index'] = vcf_file + ".tbi"
+            elif os.path.exists(vcf_file + ".csi"):
+                files['phased_small_variant_vcf_index'] = vcf_file + ".csi"
     
     # SV VCF
-    sv_pattern = os.path.join(out_dir, "phased_sv_vcf")
-    if os.path.exists(sv_pattern):
-        files['phased_sv_vcf'] = sv_pattern
-        if os.path.exists(sv_pattern + ".tbi"):
-            files['phased_sv_vcf_index'] = sv_pattern + ".tbi"
-        elif os.path.exists(sv_pattern + ".csi"):
-            files['phased_sv_vcf_index'] = sv_pattern + ".csi"
+    sv_dir = os.path.join(out_dir, "phased_sv_vcf")
+    if os.path.exists(sv_dir) and os.path.isdir(sv_dir):
+        # 디렉토리 내부의 VCF 파일 찾기
+        sv_files = glob.glob(os.path.join(sv_dir, "*.vcf.gz"))
+        if sv_files:
+            sv_file = sv_files[0]  # 첫 번째 파일 사용
+            files['phased_sv_vcf'] = sv_file
+            if os.path.exists(sv_file + ".tbi"):
+                files['phased_sv_vcf_index'] = sv_file + ".tbi"
+            elif os.path.exists(sv_file + ".csi"):
+                files['phased_sv_vcf_index'] = sv_file + ".csi"
     
     # CpG BED
-    bed_pattern = os.path.join(out_dir, "cpg_combined_bed")
-    if os.path.exists(bed_pattern):
-        files['cpg_combined_bed'] = bed_pattern
-        if os.path.exists(bed_pattern + ".tbi"):
-            files['cpg_combined_bed_index'] = bed_pattern + ".tbi"
+    bed_dir = os.path.join(out_dir, "cpg_combined_bed")
+    if os.path.exists(bed_dir) and os.path.isdir(bed_dir):
+        # 디렉토리 내부의 BED 파일 찾기
+        bed_files = glob.glob(os.path.join(bed_dir, "*.bed.gz"))
+        if not bed_files:
+            bed_files = glob.glob(os.path.join(bed_dir, "*.bed"))
+        if bed_files:
+            bed_file = bed_files[0]
+            files['cpg_combined_bed'] = bed_file
+            if os.path.exists(bed_file + ".tbi"):
+                files['cpg_combined_bed_index'] = bed_file + ".tbi"
     
     # CpG BigWig
-    bw_pattern = os.path.join(out_dir, "cpg_combined_bw")
-    if os.path.exists(bw_pattern):
-        files['cpg_combined_bw'] = bw_pattern
+    bw_dir = os.path.join(out_dir, "cpg_combined_bw")
+    if os.path.exists(bw_dir) and os.path.isdir(bw_dir):
+        # 디렉토리 내부의 BigWig 파일 찾기
+        bw_files = glob.glob(os.path.join(bw_dir, "*.bw"))
+        if not bw_files:
+            bw_files = glob.glob(os.path.join(bw_dir, "*.bigWig"))
+        if bw_files:
+            files['cpg_combined_bw'] = bw_files[0]
     
     return files
 
