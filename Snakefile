@@ -129,7 +129,7 @@ rule filter_small_variants:
             --pass-only \
             --out-vcf {output.filtered_vcf} \
             --info 'INFO.AF < {params.max_af}' \
-            --sample-expr 'sample.GQ >= {params.min_gq} && sample.DP >= {params.min_dp}' \
+            --sample-expr 'high_quality:sample.GQ >= {params.min_gq} && sample.DP >= {params.min_dp}' \
             2> {log}
         
         # TSV 변환 (연구자용)

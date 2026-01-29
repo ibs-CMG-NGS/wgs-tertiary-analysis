@@ -166,29 +166,26 @@ if (length(control_data_list) == 0 | length(experimental_data_list) == 0) {
 
 cat("\nDSS BSseq 객체 생성 중...\n")
 
-# Control BSseq 객체
-control_bsseq_list <- lapply(seq_along(control_data_list), function(i) {
-  data <- control_data_list[[i]]
-  makeBSseqData(
-    dat = list(data),
-    sampleNames = paste0("Control_", i)
-  )
-})
+# 모든 샘플 데이터를 하나의 리스트로 결합
+all_data_list <- c(control_data_list, experimental_data_list)
 
-# Experimental BSseq 객체
-experimental_bsseq_list <- lapply(seq_along(experimental_data_list), function(i) {
-  data <- experimental_data_list[[i]]
-  makeBSseqData(
-    dat = list(data),
-    sampleNames = paste0("Experimental_", i)
-  )
-})
+# 샘플 이름 생성
+control_names <- paste0("Control_", seq_along(control_data_list))
+experimental_names <- paste0("Experimental_", seq_along(experimental_data_list))
+all_sample_names <- c(control_names, experimental_names)
 
-# BSseq 객체 결합
-all_bsseq <- combine(c(control_bsseq_list, experimental_bsseq_list))
+cat(sprintf("Control 샘플: %s\n", paste(control_names, collapse=", ")))
+cat(sprintf("Experimental 샘플: %s\n", paste(experimental_names, collapse=", ")))
+
+# BSseq 객체 생성
+all_bsseq <- makeBSseqData(
+  dat = all_data_list,
+  sampleNames = all_sample_names
+)
 
 cat("BSseq 객체 생성 완료\n")
-cat(sprintf("총 CpG 사이트 수: %d\n", nrow(all_bsseq)))
+cat(sprintf("총 샘플 수: %d\n", length(all_sample_names)))
+cat(sprintf("총 CpG 사이트 수: %s\n", format(nrow(all_bsseq), big.mark=",")))
 
 # ================================================================================
 # DML (Differential Methylation Loci) 테스트
@@ -196,19 +193,11 @@ cat(sprintf("총 CpG 사이트 수: %d\n", nrow(all_bsseq)))
 
 cat("\nDML 테스트 수행 중...\n")
 
-# 그룹 정의
-design <- data.frame(
-  sample = c(paste0("Control_", 1:length(control_data_list)),
-             paste0("Experimental_", 1:length(experimental_data_list))),
-  group = c(rep("Control", length(control_data_list)),
-            rep("Experimental", length(experimental_data_list)))
-)
-
 # DML 테스트
 dmlTest <- DMLtest(
   BSobj = all_bsseq,
-  group1 = paste0("Control_", 1:length(control_data_list)),
-  group2 = paste0("Experimental_", 1:length(experimental_data_list)),
+  group1 = control_names,
+  group2 = experimental_names,
   smoothing = TRUE,
   smoothing.span = opt$smoothing
 )
