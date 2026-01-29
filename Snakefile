@@ -209,7 +209,7 @@ rule filter_sv:
         filtered_sv_tbi = os.path.join(OUTPUT_DIR, "structural_variants", "{sample}.filtered_sv.vcf.gz.tbi")
     params:
         min_sv_size = config["parameters"]["svpack"]["min_sv_size"],
-        filter_pass_only = config["parameters"]["svpack"]["filter_pass_only"]
+        pass_only_flag = lambda wildcards: "--pass-only" if config["parameters"]["svpack"]["filter_pass_only"] else ""
     container:
         config["containers"]["pacbio_svpack"]
     threads:
@@ -225,7 +225,7 @@ rule filter_sv:
             --input {input.vcf} \
             --output {output.filtered_sv} \
             --min-svlen {params.min_sv_size} \
-            {"--pass-only" if params.filter_pass_only else ""} \
+            {params.pass_only_flag} \
             2> {log}
         
         # 인덱스 생성
