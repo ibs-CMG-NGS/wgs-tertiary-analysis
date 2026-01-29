@@ -13,13 +13,12 @@ dependencies:
   - python=3.10
   - snakemake>=7.32.4
   
-  # 컨테이너 지원
-  - singularity-ce
+  # 컨테이너 지원 (Singularity/Apptainer는 시스템에 별도 설치 필요)
+  # - singularity-ce  # conda에서 설치 불가, 시스템 패키지 관리자 사용
   
   # VCF/BAM 처리 도구
   - bcftools>=1.17
-  - tabix>=1.17
-  - htslib>=1.17
+  - htslib>=1.17  # tabix는 htslib에 포함됨
   
   # 데이터 처리
   - pandas>=2.0
