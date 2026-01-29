@@ -113,14 +113,14 @@ rule filter_small_variants:
         min_gq = config["parameters"]["slivar"]["min_gq"],
         min_dp = config["parameters"]["slivar"]["min_dp"],
         hpo_terms = config["parameters"]["slivar"]["hpo_terms"]
-    container:
-        config["containers"]["pacbio_slivar"]
     threads:
         config["resources"]["slivar"]["threads"]
     resources:
         mem_mb = config["resources"]["slivar"]["mem_mb"]
     log:
         os.path.join(OUTPUT_DIR, "logs", "slivar", "{sample}.log")
+    conda:
+        "environment.yaml"
     shell:
         """
         # slivar를 사용한 필터링
@@ -159,14 +159,14 @@ rule annotate_vep:
         vep_cache = config["paths"]["vep_cache"],
         pick_order = config["parameters"]["vep"]["pick_order"],
         plugins = ",".join(config["parameters"]["vep"]["plugins"])
-    container:
-        config["containers"]["vep"]
     threads:
         config["resources"]["vep"]["threads"]
     resources:
         mem_mb = config["resources"]["vep"]["mem_mb"]
     log:
         os.path.join(OUTPUT_DIR, "logs", "vep", "{sample}.log")
+    conda:
+        "environment.yaml"
     shell:
         """
         # VEP 실행
@@ -210,18 +210,18 @@ rule filter_sv:
     params:
         min_sv_size = config["parameters"]["svpack"]["min_sv_size"],
         pass_only_flag = lambda wildcards: "--pass-only" if config["parameters"]["svpack"]["filter_pass_only"] else ""
-    container:
-        config["containers"]["pacbio_svpack"]
     threads:
         config["resources"]["svpack"]["threads"]
     resources:
         mem_mb = config["resources"]["svpack"]["mem_mb"]
     log:
         os.path.join(OUTPUT_DIR, "logs", "svpack", "{sample}.log")
+    conda:
+        "environment.yaml"
     shell:
         """
-        # svpack을 사용한 SV 필터링
-        svpack filter \
+        # svpack을 사용한 SV 필터링 (프로젝트 내 스크립트)
+        python scripts/svpack filter \
             --input {input.vcf} \
             --output {output.filtered_sv} \
             --min-svlen {params.min_sv_size} \
@@ -277,14 +277,14 @@ rule run_dmr_analysis:
         min_diff = config["parameters"]["dmr"]["min_methylation_diff"],
         min_cpg = config["parameters"]["dmr"]["min_cpg_sites"],
         smoothing = config["parameters"]["dmr"]["smoothing_span"]
-    container:
-        config["containers"]["r_dss"]
     threads:
         config["resources"]["dmr"]["threads"]
     resources:
         mem_mb = config["resources"]["dmr"]["mem_mb"]
     log:
         os.path.join(OUTPUT_DIR, "logs", "dmr", "dmr_analysis.log")
+    conda:
+        "environment.yaml"
     shell:
         """
         Rscript {input.r_script} \

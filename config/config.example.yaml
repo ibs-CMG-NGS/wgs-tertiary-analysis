@@ -125,16 +125,20 @@ parameters:
     smoothing_span: 500
 
 # 컨테이너 이미지 설정
-# 일반적으로 수정 불필요
+# 로컬 도구 사용 시: 값을 null로 설정하거나 주석 처리
+# 컨테이너 사용 시: docker:// 프리픽스와 함께 이미지 지정
 containers:
-  # PacBio 공식 이미지
-  pacbio_slivar: "docker://quay.io/pacbio/slivar:latest"
-  pacbio_svpack: "docker://quay.io/pacbio/svpack:latest"
+  # Slivar - conda install -c bioconda slivar 또는 컨테이너
+  pacbio_slivar: null  # "docker://brentp/slivar:v0.3.1"
   
-  # VEP 이미지
+  # SVPack - conda에 없음, 로컬 설치 필요
+  # GitHub: https://github.com/PacificBiosciences/svpack
+  pacbio_svpack: null
+  
+  # VEP 이미지 - 권장: 컨테이너 사용 (설정이 복잡함)
   vep: "docker://ensemblorg/ensembl-vep:release_110.1"
   
-  # R/Bioconductor (DSS 포함)
+  # R/Bioconductor (DSS 포함) - 권장: 컨테이너 사용
   r_dss: "docker://bioconductor/bioconductor_docker:RELEASE_3_18"
 
 # 리소스 설정 (클러스터 환경 대비)

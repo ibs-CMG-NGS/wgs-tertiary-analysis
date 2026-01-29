@@ -20,6 +20,19 @@ dependencies:
   - bcftools>=1.17
   - htslib>=1.17  # tabix는 htslib에 포함됨
   
+  # Variant 필터링 도구
+  - slivar  # Small variant 필터링
+  
+  # VEP 및 주석 도구 (주의: 캐시 다운로드 별도 필요)
+  - ensembl-vep
+  
+  # R 및 Bioconductor (DMR 분석용)
+  - r-base>=4.3
+  - bioconductor-bsseq
+  - bioconductor-dss
+  - r-ggplot2
+  - r-optparse
+  
   # 데이터 처리
   - pandas>=2.0
   - numpy>=1.24
@@ -34,3 +47,7 @@ dependencies:
   - pip:
     - snakemake-executor-plugin-slurm  # SLURM 클러스터 지원
     - pulp<2.8  # Snakemake 의존성
+    # 참고: svpack은 pip 패키지가 아님. 
+    # GitHub에서 다운로드: https://github.com/PacificBiosciences/svpack
+    # wget https://raw.githubusercontent.com/PacificBiosciences/svpack/main/svpack
+    # chmod +x svpack && mv svpack ~/bin/ (또는 PATH에 포함된 디렉토리)
