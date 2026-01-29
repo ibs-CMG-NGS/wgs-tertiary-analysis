@@ -1,0 +1,58 @@
+# ================================================================================
+# SLURM 클러스터 리소스 설정
+# ================================================================================
+
+__default__:
+  partition: "normal"
+  time: "24:00:00"
+  mem_mb: 4000
+  threads: 1
+
+# Small Variant 필터링 (slivar)
+filter_small_variants:
+  partition: "normal"
+  time: "6:00:00"
+  mem_mb: 8000
+  threads: 4
+
+# VEP 주석
+annotate_vep:
+  partition: "highmem"
+  time: "12:00:00"
+  mem_mb: 16000
+  threads: 8
+
+# Structural Variant 필터링
+filter_sv:
+  partition: "normal"
+  time: "4:00:00"
+  mem_mb: 4000
+  threads: 2
+
+# DMR 분석
+run_dmr_analysis:
+  partition: "highmem"
+  time: "8:00:00"
+  mem_mb: 16000
+  threads: 4
+
+# 메틸화 데이터 준비
+prepare_methylation_data:
+  partition: "normal"
+  time: "1:00:00"
+  mem_mb: 2000
+  threads: 1
+
+# 메틸화 병합
+merge_methylation_plots:
+  partition: "normal"
+  time: "2:00:00"
+  mem_mb: 4000
+  threads: 1
+
+# 요약 리포트
+generate_summary_report:
+  partition: "normal"
+  time: "0:30:00"
+  mem_mb: 2000
+  threads: 1

@@ -1,0 +1,157 @@
+# ================================================================================
+# 예제 설정 파일 - config/config.example.yaml
+# 실제 사용 시 config/config.yaml로 복사하여 수정하세요
+# cp config/config.example.yaml config/config.yaml
+# ================================================================================
+
+# 디렉토리 설정
+paths:
+  # WDL batch_results 최상위 디렉토리 (필수: 실제 경로로 수정)
+  # 예: /data_4tb/hifi-human-wgs-wdl-custom/batch_results
+  # 구조: batch_results/{sample_id}/{timestamp}_humanwgs_singleton/out/
+  batch_results_dir: "/path/to/batch_results"
+  
+  # (선택) WDL 파이프라인 결과 폴더 - 직접 지정 모드
+  # prepare_inputs.py를 사용하면 이 설정은 무시되고 자동으로 찾습니다
+  # 예: /data/pacbio/singleton_wdl_output/out
+  wdl_out_dir: "/path/to/wdl/out"
+  
+  # 참조 유전체 FASTA 파일 (GRCh38 권장)
+  # 예: /reference/GRCh38/GRCh38.fa
+  ref_genome: "/path/to/reference/GRCh38.fa"
+  
+  # VEP 캐시 디렉토리
+  # 다운로드: wget http://ftp.ensembl.org/pub/release-110/variation/indexed_vep_cache/homo_sapiens_vep_110_GRCh38.tar.gz
+  # 예: /data/vep_cache
+  vep_cache: "/path/to/vep_cache"
+  
+  # 3차 분석 결과 출력 디렉토리
+  output_dir: "./3rd_analysis_results"
+  
+  # prepare_inputs.py 스크립트가 생성하는 파일 목록 CSV
+  # 이 파일에는 각 샘플의 실제 파일 경로가 저장됩니다
+  filelist_csv: "filelist.csv"
+
+# 샘플 및 그룹 설정
+samples:
+  # 대조군 샘플 ID 목록
+  # 샘플 ID는 batch_results 아래의 폴더명과 일치해야 합니다
+  # 예: batch_results/KTY9537/ → KTY9537
+  #     batch_results/LDK6217/ → LDK6217
+  control:
+    - KTY9537
+    - LDK6217
+  
+  # 실험군 샘플 ID 목록
+  experimental:
+    - 15_JANG_SJ
+    - 16_BYUN_HY
+    - Patient001
+    - Patient002
+
+# 3차 분석 가변 파라미터
+parameters:
+  # Small Variant (slivar) 설정
+  slivar:
+    # 인구 집단 최대 빈도 (0-1)
+    # 희귀 변이 분석: 0.01 (1%)
+    # 일반 변이 분석: 0.05 (5%)
+    max_af: 0.01
+    
+    # 최소 Genotype Quality
+    # 권장: 20 이상
+    min_gq: 20
+    
+    # 최소 Read Depth
+    # PacBio HiFi: 10-20 권장
+    min_dp: 10
+    
+    # Phrank 점수 계산용 HPO 용어 (콤마로 구분)
+    # HPO Browser에서 검색: https://hpo.jax.org/app/
+    # 예시:
+    #   HP:0001250 - Seizures (발작)
+    #   HP:0000707 - Abnormality of the nervous system (신경계 이상)
+    #   HP:0001263 - Global developmental delay (전반적 발달 지연)
+    #   HP:0000729 - Autistic behavior (자폐 행동)
+    hpo_terms: "HP:0001250,HP:0000707"
+
+  # Structural Variant (svpack) 설정
+  svpack:
+    # 분석할 최소 SV 크기 (base pairs)
+    # 작은 SV 포함: 50
+    # 큰 SV만: 1000
+    min_sv_size: 50
+    
+    # FILTER 열이 PASS인 것만 추출
+    filter_pass_only: true
+
+  # VEP 주석 설정
+  vep:
+    # VEP 추가 플러그인
+    # 사용 가능: CADD, REVEL, dbNSFP, SpliceAI 등
+    plugins:
+      - CADD
+      - REVEL
+    
+    # 전사체 선택 기준 (우선순위 순서)
+    # canonical: 대표 전사체
+    # appris: APPRIS 주석
+    # tsl: Transcript Support Level
+    # biotype: 생물학적 타입
+    # ccds: CCDS 데이터베이스
+    # rank: 순위
+    # length: 길이
+    pick_order: "canonical,appris,tsl,biotype,ccds,rank,length"
+
+  # DMR 분석 설정
+  dmr:
+    # p-value 임계값
+    # 엄격한 기준: 0.01
+    # 일반적인 기준: 0.05
+    p_value_cutoff: 0.05
+    
+    # 최소 메틸화 차이 (0-1 범위)
+    # 0.1 = 10% 차이
+    # 0.2 = 20% 차이
+    min_methylation_diff: 0.1
+    
+    # 최소 CpG 사이트 수 (DMR로 인정되기 위한)
+    # 일반적으로 3-5개
+    min_cpg_sites: 3
+    
+    # 평활화 파라미터 (DSS smoothing span, bp 단위)
+    # 더 넓은 영역: 1000
+    # 더 좁은 영역: 200
+    smoothing_span: 500
+
+# 컨테이너 이미지 설정
+# 일반적으로 수정 불필요
+containers:
+  # PacBio 공식 이미지
+  pacbio_slivar: "quay.io/pacbio/slivar:latest"
+  pacbio_svpack: "quay.io/pacbio/svpack:latest"
+  
+  # VEP 이미지
+  vep: "ensemblorg/ensembl-vep:release_110.1"
+  
+  # R/Bioconductor (DSS 포함)
+  r_dss: "bioconductor/bioconductor_docker:RELEASE_3_18"
+
+# 리소스 설정 (클러스터 환경 대비)
+# 시스템 사양에 맞게 조정
+resources:
+  slivar:
+    threads: 4
+    mem_mb: 8000
+  
+  vep:
+    threads: 8
+    mem_mb: 16000
+  
+  svpack:
+    threads: 2
+    mem_mb: 4000
+  
+  dmr:
+    threads: 4
+    mem_mb: 16000
