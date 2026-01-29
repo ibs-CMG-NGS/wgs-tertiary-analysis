@@ -128,14 +128,14 @@ parameters:
 # 일반적으로 수정 불필요
 containers:
   # PacBio 공식 이미지
-  pacbio_slivar: "quay.io/pacbio/slivar:latest"
-  pacbio_svpack: "quay.io/pacbio/svpack:latest"
+  pacbio_slivar: "docker://quay.io/pacbio/slivar:latest"
+  pacbio_svpack: "docker://quay.io/pacbio/svpack:latest"
   
   # VEP 이미지
-  vep: "ensemblorg/ensembl-vep:release_110.1"
+  vep: "docker://ensemblorg/ensembl-vep:release_110.1"
   
   # R/Bioconductor (DSS 포함)
-  r_dss: "bioconductor/bioconductor_docker:RELEASE_3_18"
+  r_dss: "docker://bioconductor/bioconductor_docker:RELEASE_3_18"
 
 # 리소스 설정 (클러스터 환경 대비)
 # 시스템 사양에 맞게 조정
