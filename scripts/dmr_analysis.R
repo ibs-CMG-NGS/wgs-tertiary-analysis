@@ -61,35 +61,74 @@ cat("===========================================================================
 read_cpg_bed <- function(bed_file) {
   cat(sprintf("파일 로딩 중: %s\n", bed_file))
   
-  # PacBio CpG BED 형식: chr, start, end, methylation_level, coverage
-  # 실제 형식에 맞게 조정 필요
+  # 파일 존재 확인
+  if (!file.exists(bed_file)) {
+    cat(sprintf("  ✗ 오류: 파일이 존재하지 않습니다: %s\n", bed_file))
+    return(NULL)
+  }
+  
+  # 파일 크기 확인
+  file_size <- file.info(bed_file)$size
+  if (file_size == 0) {
+    cat(sprintf("  ✗ 오류: 파일이 비어있습니다: %s\n", bed_file))
+    return(NULL)
+  }
+  
+  cat(sprintf("  파일 크기: %.2f MB\n", file_size / (1024^2)))
+  
+  # PacBio CpG BED 형식 (aligned_bam_to_cpg_scores 출력):
+  # 9 컬럼: chrom, begin, end, mod_score, type, cov, est_mod_count, est_unmod_count, discretized_mod_score
+  # Header lines start with #
   tryCatch({
-    dt <- fread(bed_file, header=FALSE)
+    # fread로 읽기 - comment 문자로 # 지정하여 헤더 라인 스킵
+    dt <- fread(bed_file, skip="#chrom", header=TRUE, sep="\t", showProgress=FALSE)
     
-    # 컬럼명 설정 (PacBio 형식 가정)
-    # 실제 BED 파일 형식에 따라 수정 필요
-    if (ncol(dt) >= 5) {
-      colnames(dt) <- c("chr", "start", "end", "methylation", "coverage")[1:ncol(dt)]
-    } else if (ncol(dt) >= 4) {
-      colnames(dt) <- c("chr", "pos", "coverage", "methylation")[1:ncol(dt)]
-      dt$start <- dt$pos
-      dt$end <- dt$pos + 1
+    if (nrow(dt) == 0) {
+      cat(sprintf("  ✗ 오류: 파일에 데이터가 없습니다: %s\n", bed_file))
+      return(NULL)
+    }
+    
+    cat(sprintf("  읽은 행 수: %s\n", format(nrow(dt), big.mark=",")))
+    cat(sprintf("  컬럼 수: %d\n", ncol(dt)))
+    
+    # 컬럼명 확인 및 정규화
+    if (ncol(dt) < 7) {
+      cat(sprintf("  ✗ 오류: 예상된 컬럼 수가 부족합니다 (최소 7개 필요, 현재 %d개)\n", ncol(dt)))
+      cat("  첫 5행:\n")
+      print(head(dt, 5))
+      return(NULL)
+    }
+    
+    # 컬럼명이 다를 경우를 대비하여 표준 이름으로 설정
+    expected_cols <- c("chrom", "begin", "end", "mod_score", "type", 
+                       "cov", "est_mod_count", "est_unmod_count", "discretized_mod_score")
+    if (ncol(dt) >= length(expected_cols)) {
+      colnames(dt)[1:length(expected_cols)] <- expected_cols
     }
     
     # DSS 형식으로 변환
+    # X = methylated reads (est_mod_count), N = total coverage (cov)
     dss_data <- data.frame(
-      chr = dt$chr,
-      pos = dt$start,
-      N = as.integer(dt$coverage),
-      X = as.integer(round(dt$coverage * dt$methylation))
+      chr = as.character(dt$chrom),
+      pos = as.integer(dt$begin),
+      N = as.integer(dt$cov),
+      X = as.integer(dt$est_mod_count)
     )
     
-    # 필터링: coverage > 0
+    # NA 제거 및 필터링: coverage > 0
+    dss_data <- na.omit(dss_data)
     dss_data <- dss_data[dss_data$N > 0, ]
+    
+    if (nrow(dss_data) == 0) {
+      cat(sprintf("  ✗ 오류: 유효한 CpG 사이트가 없습니다 (coverage > 0)\n"))
+      return(NULL)
+    }
+    
+    cat(sprintf("  ✓ 성공: %s CpG 사이트 로드됨\n", format(nrow(dss_data), big.mark=",")))
     
     return(dss_data)
   }, error = function(e) {
-    cat(sprintf("오류: %s 파일을 읽을 수 없습니다. %s\n", bed_file, e$message))
+    cat(sprintf("  ✗ 오류: %s\n", e$message))
     return(NULL)
   })
 }

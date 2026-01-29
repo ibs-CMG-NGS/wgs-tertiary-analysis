@@ -19,6 +19,7 @@ dependencies:
   # VCF/BAM 처리 도구
   - bcftools>=1.17
   - htslib>=1.17  # tabix는 htslib에 포함됨
+  - pysam  # VCF/BAM 파일 파싱 (svpack에서 사용)
   
   # Variant 필터링 도구
   - slivar  # Small variant 필터링
