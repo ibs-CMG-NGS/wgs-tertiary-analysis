@@ -161,7 +161,7 @@ SNAKEMAKE_CMD="snakemake"
 
 # Singularity 사용
 if [ "$USE_SINGULARITY" = true ]; then
-    SNAKEMAKE_CMD="$SNAKEMAKE_CMD --use-singularity"
+    SNAKEMAKE_CMD="$SNAKEMAKE_CMD --use-singularity --singularity-args '--bind /data_4tb'"
 fi
 
 # 코어 수

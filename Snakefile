@@ -187,10 +187,6 @@ rule annotate_vep:
         os.path.join(OUTPUT_DIR, "logs", "vep", "{sample}.log")
     singularity:
         "docker://ensemblorg/ensembl-vep:release_110.1"
-    container:
-        "docker://ensemblorg/ensembl-vep:release_110.1"
-    singularity_args:
-        "--bind /data_4tb"
     shell:
         """
         # VEP 실행
