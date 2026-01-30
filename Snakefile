@@ -182,8 +182,8 @@ rule annotate_vep:
         mem_mb = config["resources"]["vep"]["mem_mb"]
     log:
         os.path.join(OUTPUT_DIR, "logs", "vep", "{sample}.log")
-    conda:
-        "environment.yaml"
+    singularity:
+        "docker://ensemblorg/ensembl-vep:release_110.1"
     shell:
         """
         # VEP 실행
