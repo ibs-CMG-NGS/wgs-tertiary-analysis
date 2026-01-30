@@ -165,6 +165,9 @@ fi
 # Snakemake 명령어 구성
 SNAKEMAKE_CMD="snakemake"
 
+# 설정 파일 명시
+SNAKEMAKE_CMD="$SNAKEMAKE_CMD --configfile $CONFIG_FILE"
+
 # Singularity 사용
 if [ "$USE_SINGULARITY" = true ]; then
     SNAKEMAKE_CMD="$SNAKEMAKE_CMD --use-singularity --singularity-args '--bind /data_4tb'"
@@ -190,7 +193,12 @@ elif [ "$INCLUDE_DMR" = true ]; then
 fi
 
 # 추가 옵션
-SNAKEMAKE_CMD="$SNAKEMAKE_CMD --printshellcmds --keep-going --rerun-incomplete"
+SNAKEMAKE_CMD="$SNAKEMAKE_CMD --keep-going --rerun-incomplete"
+
+# printshellcmds 추가 (dry-run이 아닐 때만)
+if [ "$DRY_RUN" = false ]; then
+    SNAKEMAKE_CMD="$SNAKEMAKE_CMD --printshellcmds"
+fi
 
 # 실행
 echo ""
