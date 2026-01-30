@@ -178,7 +178,7 @@ SNAKEMAKE_CMD="$SNAKEMAKE_CMD --cores $CORES"
 
 # Dry-run
 if [ "$DRY_RUN" = true ]; then
-    SNAKEMAKE_CMD="$SNAKEMAKE_CMD --dry-run --printshellcmds"
+    SNAKEMAKE_CMD="$SNAKEMAKE_CMD --dry-run -p"
     echo -e "${YELLOW}Dry-run 모드${NC}"
 fi
 
@@ -194,11 +194,6 @@ fi
 
 # 추가 옵션
 SNAKEMAKE_CMD="$SNAKEMAKE_CMD --keep-going --rerun-incomplete"
-
-# printshellcmds 추가 (dry-run이 아닐 때만)
-if [ "$DRY_RUN" = false ]; then
-    SNAKEMAKE_CMD="$SNAKEMAKE_CMD --printshellcmds"
-fi
 
 # 실행
 echo ""
