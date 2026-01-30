@@ -235,33 +235,66 @@ if (nrow(dmrs) == 0) {
 
 cat(sprintf("발견된 DMR 수: %d\n", nrow(dmrs)))
 
+# DMR 객체 구조 확인 (디버깅용)
+cat("\nDMR 객체 구조:\n")
+cat(sprintf("  클래스: %s\n", class(dmrs)))
+cat(sprintf("  컬럼명: %s\n", paste(colnames(dmrs), collapse=", ")))
+if (nrow(dmrs) > 0) {
+  cat("  첫 번째 DMR:\n")
+  print(head(dmrs, 1))
+}
+
 # ================================================================================
 # DMR 결과 저장
 # ================================================================================
 
 cat(sprintf("\nDMR 결과 저장 중: %s\n", opt$`output-csv`))
 
-# 결과 테이블 작성
-dmr_results <- data.frame(
-  chr = dmrs$chr,
-  start = dmrs$start,
-  end = dmrs$end,
-  length = dmrs$length,
-  nCG = dmrs$nCG,
-  meanMethy1 = dmrs$meanMethy1,  # Control 평균
-  meanMethy2 = dmrs$meanMethy2,  # Experimental 평균
-  diff_methy = dmrs$diff.Methy,
-  areaStat = dmrs$areaStat,
-  pvalue = dmrs$pval,
-  fdr = p.adjust(dmrs$pval, method="BH")
-)
+# DSS callDMR 결과는 data.frame이지만 컬럼명이 다를 수 있음
+# 일반적인 컬럼: chr, start, end, length, nCG, meanMethy1, meanMethy2, diff.Methy, areaStat
+# 컬럼명 확인 후 적절히 매핑
+dmr_cols <- colnames(dmrs)
 
-# FDR로 정렬
-dmr_results <- dmr_results[order(dmr_results$fdr), ]
+# 결과 테이블 작성
+dmr_results <- tryCatch({
+  data.frame(
+    chr = if("chr" %in% dmr_cols) dmrs$chr else dmrs[[1]],
+    start = if("start" %in% dmr_cols) dmrs$start else dmrs[[2]],
+    end = if("end" %in% dmr_cols) dmrs$end else dmrs[[3]],
+    length = if("length" %in% dmr_cols) dmrs$length else (dmrs[[3]] - dmrs[[2]]),
+    nCG = if("nCG" %in% dmr_cols) dmrs$nCG else NA,
+    meanMethy1 = if("meanMethy1" %in% dmr_cols) dmrs$meanMethy1 else NA,
+    meanMethy2 = if("meanMethy2" %in% dmr_cols) dmrs$meanMethy2 else NA,
+    diff_methy = if("diff.Methy" %in% dmr_cols) dmrs$diff.Methy else NA,
+    areaStat = if("areaStat" %in% dmr_cols) dmrs$areaStat else NA
+  )
+}, error = function(e) {
+  cat(sprintf("\n에러 발생: %s\n", e$message))
+  cat("DMR 객체를 그대로 저장합니다.\n")
+  as.data.frame(dmrs)
+})
+
+# p-value 추가 (있는 경우)
+if ("pval" %in% dmr_cols) {
+  dmr_results$pvalue <- dmrs$pval
+  dmr_results$fdr <- p.adjust(dmrs$pval, method="BH")
+} else {
+  dmr_results$pvalue <- NA
+  dmr_results$fdr <- NA
+}
+
+# FDR로 정렬 (FDR이 존재하는 경우)
+if ("fdr" %in% colnames(dmr_results) && !all(is.na(dmr_results$fdr))) {
+  dmr_results <- dmr_results[order(dmr_results$fdr), ]
+} else if ("pvalue" %in% colnames(dmr_results) && !all(is.na(dmr_results$pvalue))) {
+  dmr_results <- dmr_results[order(dmr_results$pvalue), ]
+}
 
 write.csv(dmr_results, opt$`output-csv`, row.names=FALSE)
 
 cat("DMR 결과 저장 완료\n")
+cat(sprintf("  저장된 DMR 수: %d\n", nrow(dmr_results)))
+cat(sprintf("  컬럼: %s\n", paste(colnames(dmr_results), collapse=", ")))
 
 # ================================================================================
 # 시각화
@@ -271,79 +304,118 @@ cat(sprintf("\nDMR 시각화 중: %s\n", opt$`output-pdf`))
 
 pdf(opt$`output-pdf`, width=12, height=8)
 
+# diff_methy가 있는지 확인
+has_diff_methy <- "diff_methy" %in% colnames(dmr_results) && !all(is.na(dmr_results$diff_methy))
+
 # 1. DMR 분포 (염색체별)
-p1 <- ggplot(dmr_results, aes(x=chr, fill=diff_methy > 0)) +
-  geom_bar() +
-  theme_minimal() +
-  labs(title="DMR 분포 (염색체별)",
-       x="염색체", y="DMR 수",
-       fill="메틸화 방향") +
-  scale_fill_manual(values=c("blue", "red"),
-                    labels=c("Hypo (감소)", "Hyper (증가)")) +
+if (has_diff_methy) {
+  p1 <- ggplot(dmr_results, aes(x=chr, fill=diff_methy > 0)) +
+    geom_bar() +
+    theme_minimal() +
+    labs(title="DMR 분포 (염색체별)",
+         x="염색체", y="DMR 수",
+         fill="메틸화 방향")
+} else {
+  p1 <- ggplot(dmr_results, aes(x=chr)) +
+    geom_bar() +
+    theme_minimal() +
+    labs(title="DMR 분포 (염색체별)",
+         x="염색체", y="DMR 수")
+} +
   theme(axis.text.x = element_text(angle=45, hjust=1))
 
 print(p1)
 
 # 2. 메틸화 차이 분포
-p2 <- ggplot(dmr_results, aes(x=diff_methy)) +
-  geom_histogram(bins=50, fill="steelblue", color="black") +
-  geom_vline(xintercept=0, linetype="dashed", color="red") +
-  theme_minimal() +
-  labs(title="메틸화 차이 분포",
-       x="메틸화 차이 (Experimental - Control)",
-       y="빈도")
-
-print(p2)
+if (has_diff_methy) {
+  p2 <- ggplot(dmr_results, aes(x=diff_methy)) +
+    geom_histogram(bins=50, fill="steelblue", color="black") +
+    geom_vline(xintercept=0, linetype="dashed", color="red") +
+    theme_minimal() +
+    labs(title="메틸화 차이 분포",
+         x="메틸화 차이 (Experimental - Control)",
+         y="빈도")
+  
+  print(p2)
+}
 
 # 3. Volcano plot
-dmr_results$log10_fdr <- -log10(dmr_results$fdr)
-p3 <- ggplot(dmr_results, aes(x=diff_methy, y=log10_fdr)) +
-  geom_point(aes(color=abs(diff_methy) > opt$`min-diff` & fdr < opt$pvalue),
-             alpha=0.6) +
-  geom_hline(yintercept=-log10(opt$pvalue), linetype="dashed", color="red") +
-  geom_vline(xintercept=c(-opt$`min-diff`, opt$`min-diff`), 
-             linetype="dashed", color="blue") +
-  theme_minimal() +
-  labs(title="DMR Volcano Plot",
-       x="메틸화 차이",
-       y="-log10(FDR)") +
-  scale_color_manual(values=c("grey", "red"),
-                     labels=c("Not significant", "Significant"),
-                     name="")
-
-print(p3)
+has_fdr <- "fdr" %in% colnames(dmr_results) && !all(is.na(dmr_results$fdr))
+if (has_diff_methy && has_fdr) {
+  dmr_results$log10_fdr <- -log10(dmr_results$fdr + 1e-300)  # 0 방지
+  p3 <- ggplot(dmr_results, aes(x=diff_methy, y=log10_fdr)) +
+    geom_point(aes(color=abs(diff_methy) > opt$`min-diff` & fdr < opt$pvalue),
+               alpha=0.6) +
+    geom_hline(yintercept=-log10(opt$pvalue), linetype="dashed", color="red") +
+    geom_vline(xintercept=c(-opt$`min-diff`, opt$`min-diff`), 
+               linetype="dashed", color="blue") +
+    theme_minimal() +
+    labs(title="DMR Volcano Plot",
+         x="메틸화 차이",
+         y="-log10(FDR)") +
+    scale_color_manual(values=c("grey", "red"),
+                       labels=c("Not significant", "Significant"),
+                       name="")
+  
+  print(p3)
+}
 
 # 4. Top 20 DMR (FDR 기준)
-top_dmrs <- head(dmr_results, 20)
-top_dmrs$region <- paste(top_dmrs$chr, ":", 
-                         format(top_dmrs$start, scientific=FALSE), "-",
-                         format(top_dmrs$end, scientific=FALSE), sep="")
-
-p4 <- ggplot(top_dmrs, aes(x=reorder(region, -log10_fdr), y=diff_methy)) +
-  geom_bar(stat="identity", aes(fill=diff_methy > 0)) +
-  coord_flip() +
-  theme_minimal() +
-  labs(title="Top 20 DMR (FDR 기준)",
+if (has_fdr && has_diff_methy) {
+  top_dmrs <- head(dmr_results, 20)
+  top_dmrs$region <- paste(top_dmrs$chr, ":", 
+                           format(top_dmrs$start, scientific=FALSE), "-",
+                           format(top_dmrs$end, scientific=FALSE), sep="")
+  top_dmrs$log10_fdr <- -log10(top_dmrs$fdr + 1e-300)
+  
+  p4 <- ggplot(top_dmrs, aes(x=reorder(region, log10_fdr), y=diff_methy)) +
+    geom_bar(stat="identity", aes(fill=diff_methy > 0)) +
+    coord_flip() +
+    theme_minimal() +
+    labs(title="Top 20 DMR (FDR 기준)",
        x="", y="메틸화 차이") +
   scale_fill_manual(values=c("blue", "red"),
                     labels=c("Hypo", "Hyper"),
                     name="") +
-  theme(axis.text.y = element_text(size=8))
-
-print(p4)
+         y="메틸화 차이",
+         x="Genomic Region",
+         fill="메틸화 방향") +
+    scale_fill_manual(values=c("blue", "red"),
+                      labels=c("Hypo", "Hyper")) +
+    theme(axis.text.y = element_text(size=8))
+  
+  print(p4)
+}
 
 # 5. DMR 크기 vs 유의성
-p5 <- ggplot(dmr_results, aes(x=length, y=log10_fdr)) +
-  geom_point(aes(color=diff_methy, size=nCG), alpha=0.6) +
-  scale_color_gradient2(low="blue", mid="white", high="red", midpoint=0,
-                        name="메틸화 차이") +
-  scale_size_continuous(name="CpG 수") +
-  theme_minimal() +
-  labs(title="DMR 크기와 유의성",
-       x="DMR 길이 (bp)",
-       y="-log10(FDR)")
-
-print(p5)
+if (has_fdr && has_diff_methy && "length" %in% colnames(dmr_results)) {
+  has_nCG <- "nCG" %in% colnames(dmr_results) && !all(is.na(dmr_results$nCG))
+  
+  dmr_results$log10_fdr <- -log10(dmr_results$fdr + 1e-300)
+  
+  if (has_nCG) {
+    p5 <- ggplot(dmr_results, aes(x=length, y=log10_fdr)) +
+      geom_point(aes(color=diff_methy, size=nCG), alpha=0.6) +
+      scale_color_gradient2(low="blue", mid="white", high="red", midpoint=0,
+                            name="메틸화 차이") +
+      scale_size_continuous(name="CpG 수") +
+      theme_minimal() +
+      labs(title="DMR 크기와 유의성",
+           x="DMR 길이 (bp)",
+           y="-log10(FDR)")
+  } else {
+    p5 <- ggplot(dmr_results, aes(x=length, y=log10_fdr)) +
+      geom_point(aes(color=diff_methy), alpha=0.6) +
+      scale_color_gradient2(low="blue", mid="white", high="red", midpoint=0,
+                            name="메틸화 차이") +
+      theme_minimal() +
+      labs(title="DMR 크기와 유의성",
+           x="DMR 길이 (bp)",
+           y="-log10(FDR)")
+  }
+  
+  print(p5)
+}
 
 dev.off()
 
@@ -357,8 +429,16 @@ cat("\n=========================================================================
 cat("DMR 분석 요약\n")
 cat("================================================================================\n")
 cat(sprintf("총 DMR 수: %d\n", nrow(dmr_results)))
-cat(sprintf("Hyper-메틸화 DMR: %d (%.1f%%)\n", 
-            sum(dmr_results$diff_methy > 0),
+
+if (has_diff_methy) {
+  cat(sprintf("Hyper-메틸화 DMR: %d (%.1f%%)\n", 
+              sum(dmr_results$diff_methy > 0, na.rm=TRUE),
+              100 * sum(dmr_results$diff_methy > 0, na.rm=TRUE) / nrow(dmr_results)))
+  cat(sprintf("Hypo-메틸화 DMR: %d (%.1f%%)\n",
+              sum(dmr_results$diff_methy < 0, na.rm=TRUE),
+              100 * sum(dmr_results$diff_methy < 0, na.rm=TRUE) / nrow(dmr_results)))
+  cat(sprintf("평균 메틸화 차이: %.3f\n", mean(abs(dmr_results$diff_methy), na.rm=TRUE)))
+}
             100 * sum(dmr_results$diff_methy > 0) / nrow(dmr_results)))
 cat(sprintf("Hypo-메틸화 DMR: %d (%.1f%%)\n", 
             sum(dmr_results$diff_methy < 0),

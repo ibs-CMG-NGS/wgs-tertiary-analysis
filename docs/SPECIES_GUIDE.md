@@ -16,8 +16,12 @@
 
 **빈도 데이터베이스 다운로드:**
 ```bash
-# gnomAD v3.1.2 for GRCh38 (약 40GB)
-wget https://github.com/brentp/slivar/releases/download/v0.3.1/gnomad.hg38.v3.1.2.zip
+# gnomAD v3 genomes for GRCh38 (71,702 samples, Joint Exomes+Genomes)
+# 현재 slivar gnotate에서 지원하는 최신 안정 버전
+wget https://slivar.s3.amazonaws.com/gnomad.hg38.genomes.v3.fix.zip
+
+# 참고: gnomAD v4는 GCP에만 있으며 slivar gnotate 형식으로 아직 제공되지 않음
+# v4 사용을 원하면 직접 VCF 다운로드 후 변환 필요 (고급)
 ```
 
 **설정 예시:**
@@ -30,7 +34,7 @@ parameters:
   slivar:
     max_af: 0.01
     frequency_db:
-      human: "/data/references/gnomad.hg38.v3.1.2.zip"
+      human: "/data/references/gnomad.hg38.genomes.v3.fix.zip"
     frequency_field:
       human: "gnomad_popmax_af"
 ```
