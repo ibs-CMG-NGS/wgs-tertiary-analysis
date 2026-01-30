@@ -1,0 +1,91 @@
+# ================================================================================
+# Mouse (C57BL/6) WGS 분석 설정 파일
+# ================================================================================
+
+# 디렉토리 설정
+paths:
+  batch_results_dir: "/data_4tb/mouse-wgs-wdl/batch_results"
+  ref_genome: "/data/references/GRCm39/GRCm39.fa"
+  vep_cache: "/data/vep_cache/mus_musculus/110_GRCm39"
+  output_dir: "./mouse_analysis_results"
+  filelist_csv: "filelist.csv"
+
+# 샘플 및 그룹 설정
+samples:
+  control:
+    - C57BL6_WT_1
+    - C57BL6_WT_2
+  
+  experimental:
+    - C57BL6_KO_1
+    - C57BL6_KO_2
+
+# 3차 분석 파라미터
+parameters:
+  # 일반 설정
+  general:
+    species: "mouse"
+    reference_version: "GRCm39"
+  
+  # Small Variant (slivar) 설정
+  slivar:
+    # Mouse는 실험동물이므로 빈도 필터링보다 품질 필터링 중심
+    max_af: 0.05        # 더 관대한 기준 (또는 DB 없으면 무시됨)
+    min_gq: 30          # 더 엄격한 품질 기준
+    min_dp: 20          # 더 높은 coverage 요구
+    hpo_terms: ""       # Mouse에는 HPO 적용 안 됨
+    
+    # Mouse Genomes Project (MGP) v5
+    # 다운로드: https://www.mousegenomes.org/
+    frequency_db:
+      human: ""
+      mouse: "/data/references/mgp/mgp.v5.merged.snps_all.dbSNP.vcf.gz"
+    
+    # MGP는 AF 필드가 없을 수 있으므로 AC 사용
+    # 또는 빈도 DB를 비워두고 품질 필터링만 사용
+    frequency_field:
+      human: "gnomad_popmax_af"
+      mouse: "AF"  # 또는 "AC" - MGP VCF 구조에 따라 조정
+
+  # Structural Variant (svpack) 설정
+  svpack:
+    min_sv_size: 50
+    filter_pass_only: true
+
+  # VEP 주석 설정 (Mouse용)
+  vep:
+    plugins:
+      - dbNSFP    # Mouse는 CADD보다 dbNSFP 권장
+    pick_order: "canonical,appris,tsl,biotype,ccds,rank,length"
+
+  # DMR 분석 설정
+  dmr:
+    p_value_cutoff: 0.05
+    min_methylation_diff: 0.1
+    min_cpg_sites: 3
+    smoothing_span: 500
+
+# 컨테이너 이미지 (Human과 동일)
+containers:
+  pacbio_slivar: "docker://quay.io/pacbio/slivar:latest"
+  pacbio_svpack: "docker://quay.io/pacbio/svpack:latest"
+  vep: "docker://ensemblorg/ensembl-vep:release_110.1"
+  r_dss: "docker://bioconductor/bioconductor_docker:RELEASE_3_18"
+
+# 리소스 설정
+resources:
+  slivar:
+    threads: 4
+    mem_mb: 8000
+  
+  vep:
+    threads: 8
+    mem_mb: 16000
+  
+  svpack:
+    threads: 2
+    mem_mb: 4000
+  
+  dmr:
+    threads: 4
+    mem_mb: 16000

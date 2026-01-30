@@ -109,10 +109,19 @@ rule filter_small_variants:
         filtered_vcf = os.path.join(OUTPUT_DIR, "small_variants", "{sample}.filtered.vcf.gz"),
         filtered_tsv = os.path.join(OUTPUT_DIR, "small_variants", "{sample}.filtered.tsv")
     params:
+        species = config["parameters"]["general"]["species"],
         max_af = config["parameters"]["slivar"]["max_af"],
         min_gq = config["parameters"]["slivar"]["min_gq"],
         min_dp = config["parameters"]["slivar"]["min_dp"],
-        hpo_terms = config["parameters"]["slivar"]["hpo_terms"]
+        hpo_terms = config["parameters"]["slivar"]["hpo_terms"],
+        # Species-specific frequency database
+        gnotate_db = lambda wildcards: config["parameters"]["slivar"]["frequency_db"].get(
+            config["parameters"]["general"]["species"], ""
+        ),
+        # Species-specific frequency field name
+        freq_field = lambda wildcards: config["parameters"]["slivar"]["frequency_field"].get(
+            config["parameters"]["general"]["species"], "gnomad_popmax_af"
+        )
     threads:
         config["resources"]["slivar"]["threads"]
     resources:
@@ -123,20 +132,48 @@ rule filter_small_variants:
         "environment.yaml"
     shell:
         """
-        # slivar를 사용한 필터링
-        slivar expr \
-            --vcf {input.vcf} \
-            --pass-only \
-            --out-vcf {output.filtered_vcf} \
-            --info 'INFO.AF < {params.max_af}' \
-            --sample-expr 'high_quality:sample.GQ >= {params.min_gq} && sample.DP >= {params.min_dp}' \
-            2> {log}
+        echo "Species: {params.species}" > {log}
+        echo "Frequency database: {params.gnotate_db}" >> {log}
+        echo "Frequency field: {params.freq_field}" >> {log}
+        
+        # 빈도 데이터베이스가 설정된 경우 주석 추가 후 필터링
+        if [ -n "{params.gnotate_db}" ] && [ -f "{params.gnotate_db}" ]; then
+            echo "Adding population frequency annotations ({params.species})..." >> {log}
+            
+            # 1. 빈도 주석 추가 (gnomAD for human, MGP for mouse, etc.)
+            slivar expr \
+                --vcf {input.vcf} \
+                --gnotate {params.gnotate_db} \
+                --out-vcf /tmp/{wildcards.sample}.annotated.vcf.gz \
+                2>> {log}
+            
+            # 2. 빈도 기반 필터링
+            slivar expr \
+                --vcf /tmp/{wildcards.sample}.annotated.vcf.gz \
+                --pass-only \
+                --out-vcf {output.filtered_vcf} \
+                --info 'variant.{params.freq_field} < {params.max_af} || variant.{params.freq_field} == ""' \
+                --sample-expr 'high_quality:sample.GQ >= {params.min_gq} && sample.DP >= {params.min_dp}' \
+                2>> {log}
+            
+            # 임시 파일 삭제
+            rm -f /tmp/{wildcards.sample}.annotated.vcf.gz
+        else
+            echo "No frequency database found. Filtering by quality only..." >> {log}
+            
+            # 빈도 DB 없이 품질 기반 필터링만 수행
+            slivar expr \
+                --vcf {input.vcf} \
+                --pass-only \
+                --out-vcf {output.filtered_vcf} \
+                --sample-expr 'high_quality:sample.GQ >= {params.min_gq} && sample.DP >= {params.min_dp}' \
+                2>> {log}
+        fi
         
         # TSV 변환 (연구자용)
         slivar tsv \
             --vcf {output.filtered_vcf} \
             --csq-column CSQ \
-            --info-field AF \
             --sample-field DP \
             --sample-field GQ \
             > {output.filtered_tsv} \

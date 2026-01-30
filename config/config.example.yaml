@@ -51,6 +51,17 @@ samples:
 
 # 3차 분석 가변 파라미터
 parameters:
+  # 일반 설정
+  general:
+    # 분석 대상 종 (human, mouse, rat, etc.)
+    # 이 설정에 따라 빈도 데이터베이스 및 필터링 전략이 달라집니다
+    species: "human"  # "human" 또는 "mouse"
+    
+    # 참조 유전체 버전
+    # human: GRCh38 (hg38), GRCh37 (hg19)
+    # mouse: GRCm39 (mm39), GRCm38 (mm10)
+    reference_version: "GRCh38"
+  
   # Small Variant (slivar) 설정
   slivar:
     # 인구 집단 최대 빈도 (0-1)
@@ -74,6 +85,20 @@ parameters:
     #   HP:0001263 - Global developmental delay (전반적 발달 지연)
     #   HP:0000729 - Autistic behavior (자폐 행동)
     hpo_terms: "HP:0001250,HP:0000707"
+    
+    # Species-specific 빈도 데이터베이스
+    # 다운로드 링크:
+    #   human: https://github.com/brentp/slivar/releases (gnomad.hg38.v3.1.2.zip)
+    #   mouse: https://www.mousegenomes.org/ (mgp.v5.merged.snps_all.dbSNP.vcf.gz)
+    frequency_db:
+      human: ""  # 예: "/data/references/gnomad.hg38.v3.1.2.zip"
+      mouse: ""  # 예: "/data/references/mgp.v5.merged.snps_all.dbSNP.vcf.gz"
+    
+    # Species-specific 빈도 필드 명
+    # slivar gnotate가 추가하는 필드명이 DB마다 다름
+    frequency_field:
+      human: "gnomad_popmax_af"     # gnomAD: 최대 인구 집단 빈도
+      mouse: "AC"                    # MGP: Allele Count (또는 AF if available)
 
   # Structural Variant (svpack) 설정
   svpack:

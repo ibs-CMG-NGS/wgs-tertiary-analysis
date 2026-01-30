@@ -1,0 +1,88 @@
+# ================================================================================
+# Human WGS 분석 설정 파일
+# ================================================================================
+
+# 디렉토리 설정
+paths:
+  batch_results_dir: "/data_4tb/hifi-human-wgs-wdl-custom/batch_results"
+  ref_genome: "/data/references/GRCh38/GRCh38.fa"
+  vep_cache: "/data/vep_cache/homo_sapiens/110_GRCh38"
+  output_dir: "./human_analysis_results"
+  filelist_csv: "filelist.csv"
+
+# 샘플 및 그룹 설정
+samples:
+  control:
+    - KTY9537
+    - LDK6217
+  
+  experimental:
+    - 15_JANG_SJ
+    - 16_BYUN_HY
+
+# 3차 분석 파라미터
+parameters:
+  # 일반 설정
+  general:
+    species: "human"
+    reference_version: "GRCh38"
+  
+  # Small Variant (slivar) 설정
+  slivar:
+    max_af: 0.01        # 1% 미만 희귀 변이
+    min_gq: 20
+    min_dp: 10
+    hpo_terms: "HP:0001250,HP:0000707"
+    
+    # gnomAD v3.1.2 (Human GRCh38)
+    frequency_db:
+      human: "/data/references/gnomad/gnomad.hg38.v3.1.2.zip"
+      mouse: ""
+    
+    frequency_field:
+      human: "gnomad_popmax_af"
+      mouse: "AC"
+
+  # Structural Variant (svpack) 설정
+  svpack:
+    min_sv_size: 50
+    filter_pass_only: true
+
+  # VEP 주석 설정
+  vep:
+    plugins:
+      - CADD
+      - REVEL
+    pick_order: "canonical,appris,tsl,biotype,ccds,rank,length"
+
+  # DMR 분석 설정
+  dmr:
+    p_value_cutoff: 0.05
+    min_methylation_diff: 0.1
+    min_cpg_sites: 3
+    smoothing_span: 500
+
+# 컨테이너 이미지
+containers:
+  pacbio_slivar: "docker://quay.io/pacbio/slivar:latest"
+  pacbio_svpack: "docker://quay.io/pacbio/svpack:latest"
+  vep: "docker://ensemblorg/ensembl-vep:release_110.1"
+  r_dss: "docker://bioconductor/bioconductor_docker:RELEASE_3_18"
+
+# 리소스 설정
+resources:
+  slivar:
+    threads: 4
+    mem_mb: 8000
+  
+  vep:
+    threads: 8
+    mem_mb: 16000
+  
+  svpack:
+    threads: 2
+    mem_mb: 4000
+  
+  dmr:
+    threads: 4
+    mem_mb: 16000
