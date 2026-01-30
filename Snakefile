@@ -172,7 +172,10 @@ rule annotate_vep:
         ref_genome = config["paths"]["ref_genome"],
         vep_cache = config["paths"]["vep_cache"],
         pick_order = config["parameters"]["vep"]["pick_order"],
-        plugins = ",".join(config["parameters"]["vep"]["plugins"])
+        # Build plugin flags safely: pass each plugin as its own --plugin argument.
+        # If a plugin requires parameters (e.g. file paths), specify them in the config
+        # as a single string like "CADD,/path/to/file" so it becomes "--plugin CADD,/path/to/file".
+        plugins_flags = " ".join(["--plugin %s" % p for p in config["parameters"]["vep"].get("plugins", [])])
     threads:
         config["resources"]["vep"]["threads"]
     resources:
@@ -198,7 +201,7 @@ rule annotate_vep:
             --fasta {params.ref_genome} \
             --everything \
             --pick_order {params.pick_order} \
-            --plugin {params.plugins} \
+            {params.plugins_flags} \
             --stats_file {output.stats} \
             --force_overwrite \
             2> {log}
