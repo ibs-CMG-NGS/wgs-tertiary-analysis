@@ -91,12 +91,15 @@ rule all:
             sample=ALL_SAMPLES
         ),
         
-        # DMR 분석 결과
-        os.path.join(OUTPUT_DIR, "dmr_analysis", "dmr_results.csv"),
-        os.path.join(OUTPUT_DIR, "dmr_analysis", "dmr_plots.pdf"),
-        
         # 메틸화 파일 정리
         os.path.join(OUTPUT_DIR, "methylation", "methylation_summary.txt")
+
+# DMR 분석 타겟 (선택적 실행)
+# 실행 방법: snakemake --cores 16 dmr_analysis
+rule dmr_analysis:
+    input:
+        os.path.join(OUTPUT_DIR, "dmr_analysis", "dmr_results.csv"),
+        os.path.join(OUTPUT_DIR, "dmr_analysis", "dmr_plots.pdf")
 
 # ================================================================================
 # Phase 1: Small Variant 필터링 (slivar)
@@ -184,6 +187,10 @@ rule annotate_vep:
         os.path.join(OUTPUT_DIR, "logs", "vep", "{sample}.log")
     singularity:
         "docker://ensemblorg/ensembl-vep:release_110.1"
+    container:
+        "docker://ensemblorg/ensembl-vep:release_110.1"
+    singularity_args:
+        "--bind /data_4tb"
     shell:
         """
         # VEP 실행

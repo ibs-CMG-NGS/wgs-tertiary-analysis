@@ -373,15 +373,12 @@ if (has_fdr && has_diff_methy) {
     coord_flip() +
     theme_minimal() +
     labs(title="Top 20 DMR (FDR 기준)",
-       x="", y="메틸화 차이") +
-  scale_fill_manual(values=c("blue", "red"),
-                    labels=c("Hypo", "Hyper"),
-                    name="") +
-         y="메틸화 차이",
          x="Genomic Region",
+         y="메틸화 차이",
          fill="메틸화 방향") +
     scale_fill_manual(values=c("blue", "red"),
-                      labels=c("Hypo", "Hyper")) +
+                      labels=c("Hypo", "Hyper"),
+                      name="") +
     theme(axis.text.y = element_text(size=8))
   
   print(p4)

@@ -30,6 +30,7 @@ PacBio HiFi WGS 3차 분석 파이프라인 실행 스크립트
     -c, --cores N           사용할 코어 수 (기본: 16)
     --config FILE           설정 파일 경로 (기본: config/config.yaml)
     -t, --target RULE       특정 규칙만 실행
+    --dmr                   DMR 분석 포함 (기본: 미포함)
     --unlock                워크플로우 잠금 해제
     --dag                   DAG 그래프 생성 (dag.pdf)
     --report                HTML 리포트 생성
@@ -41,8 +42,14 @@ PacBio HiFi WGS 3차 분석 파이프라인 실행 스크립트
     # 커스텀 설정 파일 사용
     $0 --config config/config_hifisolve.yaml --cores 8
 
-    # 전체 파이프라인 실행 (8 코어)
+    # 전체 파이프라인 실행 (8 코어, DMR 제외)
     $0 --cores 8
+
+    # DMR 분석 포함하여 실행
+    $0 --cores 16 --dmr
+
+    # DMR 분석만 실행 (이미 필터링/주석 완료된 경우)
+    $0 --target dmr_analysis
 
     # Small variant 필터링만 실행
     $0 --target filter_small_variants
@@ -64,6 +71,7 @@ TARGET=""
 UNLOCK=false
 DAG=false
 REPORT=false
+INCLUDE_DMR=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -87,6 +95,10 @@ while [[ $# -gt 0 ]]; do
         -t|--target)
             TARGET="$2"
             shift 2
+            ;;
+        --dmr)
+            INCLUDE_DMR=true
+            shift
             ;;
         --unlock)
             UNLOCK=true
@@ -165,6 +177,10 @@ fi
 if [ -n "$TARGET" ]; then
     SNAKEMAKE_CMD="$SNAKEMAKE_CMD $TARGET"
     echo -e "${YELLOW}타겟: $TARGET${NC}"
+elif [ "$INCLUDE_DMR" = true ]; then
+    # DMR 분석 포함
+    SNAKEMAKE_CMD="$SNAKEMAKE_CMD dmr_analysis"
+    echo -e "${YELLOW}DMR 분석 포함${NC}"
 fi
 
 # 추가 옵션
