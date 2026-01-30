@@ -170,10 +170,9 @@ rule filter_small_variants:
                 2>> {log}
         fi
         
-        # TSV 변환 (연구자용)
+        # TSV 변환 (연구자용) - CSQ는 VEP 후에 추가되므로 제외
         slivar tsv \
             --vcf {output.filtered_vcf} \
-            --csq-column CSQ \
             --sample-field DP \
             --sample-field GQ \
             > {output.filtered_tsv} \
