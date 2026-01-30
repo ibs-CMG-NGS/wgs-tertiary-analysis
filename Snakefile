@@ -95,11 +95,12 @@ rule all:
         os.path.join(OUTPUT_DIR, "methylation", "methylation_summary.txt")
 
 # DMR 분석 타겟 (선택적 실행)
-# 실행 방법: snakemake --cores 16 dmr_analysis
-rule dmr_analysis:
+# 실행 방법: snakemake --cores 16 run_dmr
+rule run_dmr:
     input:
         os.path.join(OUTPUT_DIR, "dmr_analysis", "dmr_results.csv"),
         os.path.join(OUTPUT_DIR, "dmr_analysis", "dmr_plots.pdf")
+    default_target: False
 
 # ================================================================================
 # Phase 1: Small Variant 필터링 (slivar)

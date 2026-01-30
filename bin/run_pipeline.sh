@@ -48,8 +48,8 @@ PacBio HiFi WGS 3차 분석 파이프라인 실행 스크립트
     # DMR 분석 포함하여 실행
     $0 --cores 16 --dmr
 
-    # DMR 분석만 실행 (이미 필터링/주석 완료된 경우)
-    $0 --target dmr_analysis
+    # DMR 분석만 실행 (이미 필터링 완료된 경우)
+    $0 --target run_dmr
 
     # Small variant 필터링만 실행
     $0 --target filter_small_variants
@@ -179,7 +179,7 @@ if [ -n "$TARGET" ]; then
     echo -e "${YELLOW}타겟: $TARGET${NC}"
 elif [ "$INCLUDE_DMR" = true ]; then
     # DMR 분석 포함
-    SNAKEMAKE_CMD="$SNAKEMAKE_CMD dmr_analysis"
+    SNAKEMAKE_CMD="$SNAKEMAKE_CMD run_dmr"
     echo -e "${YELLOW}DMR 분석 포함${NC}"
 fi
 
