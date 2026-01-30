@@ -170,11 +170,11 @@ rule filter_small_variants:
                 2>> {log}
         fi
         
-        # TSV 변환 (연구자용) - CSQ는 VEP 후에 추가되므로 제외
-        slivar tsv \
-            --vcf {output.filtered_vcf} \
-            --sample-field DP \
-            --sample-field GQ \
+        # TSV 변환 (연구자용) - bcftools query 사용
+        bcftools query \
+            -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER[\t%GT\t%DP\t%GQ]\n' \
+            -H \
+            {output.filtered_vcf} \
             > {output.filtered_tsv} \
             2>> {log}
         """
