@@ -49,7 +49,7 @@ PacBio HiFi WGS 3차 분석 파이프라인 실행 스크립트
     $0 --cores 16 --dmr
 
     # DMR 분석만 실행 (이미 필터링 완료된 경우)
-    $0 --target run_dmr
+    $0 --target output/dmr_analysis/dmr_results.csv
 
     # Small variant 필터링만 실행
     $0 --target filter_small_variants
@@ -128,6 +128,12 @@ if [ ! -f "$CONFIG_FILE" ]; then
     exit 1
 fi
 
+# OUTPUT_DIR 읽기 (DMR 타겟용)
+OUTPUT_DIR=$(grep -E '^\s*output_dir:' "$CONFIG_FILE" | sed 's/.*: *//' | tr -d '"' | tr -d "'")
+if [ -z "$OUTPUT_DIR" ]; then
+    OUTPUT_DIR="output"
+fi
+
 # 로그 디렉토리 생성
 mkdir -p logs
 
@@ -178,8 +184,8 @@ if [ -n "$TARGET" ]; then
     SNAKEMAKE_CMD="$SNAKEMAKE_CMD $TARGET"
     echo -e "${YELLOW}타겟: $TARGET${NC}"
 elif [ "$INCLUDE_DMR" = true ]; then
-    # DMR 분석 포함
-    SNAKEMAKE_CMD="$SNAKEMAKE_CMD run_dmr"
+    # DMR 분석 포함 - 실제 파일 경로를 타겟으로 지정
+    SNAKEMAKE_CMD="$SNAKEMAKE_CMD ${OUTPUT_DIR}/dmr_analysis/dmr_results.csv ${OUTPUT_DIR}/dmr_analysis/dmr_plots.pdf"
     echo -e "${YELLOW}DMR 분석 포함${NC}"
 fi
 
