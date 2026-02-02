@@ -1,0 +1,17 @@
+name: dmr-analysis
+channels:
+  - conda-forge
+  - bioconda
+  - r
+  - defaults
+dependencies:
+  - r-base=4.3
+  - bioconductor-dss
+  - bioconductor-bsseq
+  - r-ggplot2
+  - r-data.table
+  - r-optparse
+  - r-matrixstats
+  - r-cairo
+  - cairo
+  - freetype

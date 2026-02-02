@@ -198,7 +198,13 @@ rule annotate_vep:
             --cache \
             --dir_cache {params.vep_cache} \
             --fasta {params.ref_genome} \
-            --everything \
+            --variant_class \
+            --sift b \
+            --polyphen b \
+            --regulatory \
+            --biotype \
+            --canonical \
+            --gene_phenotype \
             --pick_order {params.pick_order} \
             {params.plugins_flags} \
             --stats_file {output.stats} \
@@ -313,7 +319,7 @@ rule run_dmr_analysis:
     log:
         os.path.join(OUTPUT_DIR, "logs", "dmr", "dmr_analysis.log")
     conda:
-        "environment.yaml"
+        "envs/dmr.yaml"
     shell:
         """
         Rscript {input.r_script} \
