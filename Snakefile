@@ -166,7 +166,6 @@ rule annotate_vep:
         vcf = os.path.join(OUTPUT_DIR, "small_variants", "{sample}.filtered.vcf.gz")
     output:
         annotated_vcf = os.path.join(OUTPUT_DIR, "small_variants", "{sample}.annotated.vcf.gz"),
-        annotated_tsv = os.path.join(OUTPUT_DIR, "small_variants", "{sample}.annotated.tsv"),
         stats = os.path.join(OUTPUT_DIR, "small_variants", "{sample}.vep_stats.html")
     params:
         ref_genome = config["paths"]["ref_genome"],
@@ -186,7 +185,7 @@ rule annotate_vep:
         "docker://ensemblorg/ensembl-vep:release_110.1"
     shell:
         """
-        # VEP 실행
+        # VEP 실행 (Singularity 컨테이너 내부)
         vep \
             --input_file {input.vcf} \
             --output_file {output.annotated_vcf} \
@@ -205,13 +204,25 @@ rule annotate_vep:
             --stats_file {output.stats} \
             --force_overwrite \
             2> {log}
-        
-        # VCF를 TSV로 변환 (연구자용)
+        """
+
+# VCF를 TSV로 변환 (bcftools는 호스트 conda 환경에서 실행)
+rule vep_to_tsv:
+    input:
+        vcf = os.path.join(OUTPUT_DIR, "small_variants", "{sample}.annotated.vcf.gz")
+    output:
+        tsv = os.path.join(OUTPUT_DIR, "small_variants", "{sample}.annotated.tsv")
+    log:
+        os.path.join(OUTPUT_DIR, "logs", "vep", "{sample}_tsv.log")
+    conda:
+        "environment.yaml"
+    shell:
+        """
         bcftools query \
             -f '%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\t%QUAL\\t%FILTER\\t%INFO/CSQ\\n' \
-            {output.annotated_vcf} \
-            > {output.annotated_tsv} \
-            2>> {log}
+            {input.vcf} \
+            > {output.tsv} \
+            2> {log}
         """
 
 # ================================================================================
