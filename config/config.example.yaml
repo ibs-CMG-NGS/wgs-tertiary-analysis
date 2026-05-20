@@ -24,30 +24,48 @@ paths:
   # 다운로드: wget http://ftp.ensembl.org/pub/release-110/variation/indexed_vep_cache/homo_sapiens_vep_110_GRCh38.tar.gz
   # 예: /data/vep_cache
   vep_cache: "/path/to/vep_cache"
-  
+
+  # Ensembl GFF3 유전자 주석 파일 (SV consequence 주석에 사용)
+  # WDL 리소스에 포함되어 있음:
+  # /data_4tb/hifi-human-wgs-wdl-custom/hifi-wdl-resources-v3.1.0/GRCh38/ensembl.GRCh38.101.reformatted.gff3.gz
+  gff3_file: "/path/to/ensembl.GRCh38.101.reformatted.gff3.gz"
+
   # 3차 분석 결과 출력 디렉토리
   output_dir: "./3rd_analysis_results"
-  
+
   # prepare_inputs.py 스크립트가 생성하는 파일 목록 CSV
   # 이 파일에는 각 샘플의 실제 파일 경로가 저장됩니다
   filelist_csv: "filelist.csv"
 
 # 샘플 및 그룹 설정
 samples:
-  # 대조군 샘플 ID 목록
+  # 대조군 샘플 ID 목록 (기존 DMR 2군 비교 rule 호환용)
   # 샘플 ID는 batch_results 아래의 폴더명과 일치해야 합니다
   # 예: batch_results/KTY9537/ → KTY9537
   #     batch_results/LDK6217/ → LDK6217
   control:
     - KTY9537
     - LDK6217
-  
-  # 실험군 샘플 ID 목록
+
+  # 실험군 샘플 ID 목록 (기존 DMR 2군 비교 rule 호환용)
   experimental:
     - 15_JANG_SJ
     - 16_BYUN_HY
     - Patient001
     - Patient002
+
+  # 다중 군 정의 (있으면 cohort 분석에서 이것을 우선 사용)
+  # 없으면 위의 control/experimental 2군으로 자동 폴백
+  # groups:
+  #   control:
+  #     - KTY9537
+  #     - LDK6217
+  #   treated_low:
+  #     - 15_JANG_SJ
+  #     - 16_BYUN_HY
+  #   treated_high:
+  #     - Patient001
+  #     - Patient002
 
 # 3차 분석 가변 파라미터
 parameters:
@@ -134,19 +152,65 @@ parameters:
     # 엄격한 기준: 0.01
     # 일반적인 기준: 0.05
     p_value_cutoff: 0.05
-    
+
     # 최소 메틸화 차이 (0-1 범위)
     # 0.1 = 10% 차이
     # 0.2 = 20% 차이
     min_methylation_diff: 0.1
-    
+
     # 최소 CpG 사이트 수 (DMR로 인정되기 위한)
     # 일반적으로 3-5개
     min_cpg_sites: 3
-    
+
     # 평활화 파라미터 (DSS smoothing span, bp 단위)
     # 더 넓은 영역: 1000
     # 더 좁은 영역: 200
+    smoothing_span: 500
+
+  # TRGT 반복서열 분석 설정 (phased_trgt_vcf가 있을 때만 실행)
+  trgt:
+    # 최소 spanning read depth
+    # 이 값 미만인 repeat는 분석에서 제외 (신뢰도 낮음)
+    min_spanning_depth: 5
+
+    # Expanded 판정 시 기대 범위 초과 허용 bp
+    # 0 = 기대 범위 최대값 초과 즉시 플래그
+    # 10 = 기대 범위 최대값 + 10bp 초과 시 플래그
+    expansion_buffer: 0
+
+  # 코호트 수준 통계 분석 설정 (Phase 4/5)
+  cohort:
+    # Small Variant burden 필터: 이 IMPACT 이상인 변이만 집계
+    # HIGH|MODERATE: 기능적으로 중요한 변이만 포함
+    # HIGH: 가장 엄격한 필터 (stop_gained, frameshift 등)
+    min_impact: "HIGH|MODERATE"
+
+    # SV burden 분석 대상 consequence 타입
+    # svpack consequence 출력의 BCSQ 필드 prefix
+    sv_consequence_types:
+      - "sv:cds"    # 코딩서열 내 SV
+      - "sv:utr"    # UTR 내 SV
+
+    # 유전자에 이벤트가 있어야 하는 최소 샘플 수 (해당 미만은 분석 제외)
+    min_samples_with_event: 1
+
+    # FDR 임계값 (BH correction 기준)
+    fdr_cutoff: 0.05
+
+  # ASM (Allele-Specific Methylation) 분석 설정
+  # cpg_hap1_bed / cpg_hap2_bed가 있을 때만 실행
+  asm:
+    # p-value 임계값 (DMR과 동일 기준 적용 가능)
+    p_value_cutoff: 0.05
+
+    # 최소 메틸화 차이 (ASM은 DMR보다 더 큰 차이가 일반적)
+    # 0.2 = 20% 차이 (각인 유전자 수준)
+    min_methylation_diff: 0.2
+
+    # 최소 CpG 사이트 수
+    min_cpg_sites: 3
+
+    # DSS smoothing span (bp)
     smoothing_span: 500
 
 # 컨테이너 이미지 설정
@@ -184,3 +248,23 @@ resources:
   dmr:
     threads: 4
     mem_mb: 16000
+
+  sv_consequence:
+    threads: 2
+    mem_mb: 4000
+
+  trgt:
+    threads: 2
+    mem_mb: 4000
+
+  asm:
+    threads: 4
+    mem_mb: 8000
+
+  cohort_burden:
+    threads: 4
+    mem_mb: 8000
+
+  trgt_compare:
+    threads: 2
+    mem_mb: 4000

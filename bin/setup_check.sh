@@ -94,8 +94,14 @@ echo "-------------------------------------------"
 
 ALL_OK=true
 
-check_command snakemake || ALL_OK=false
-check_command python || ALL_OK=false
+check_command snakemake  || ALL_OK=false
+check_command python     || ALL_OK=false
+check_command bcftools   || ALL_OK=false
+check_command bgzip      || ALL_OK=false
+check_command tabix      || ALL_OK=false
+
+# bedtools (SV consequence / ASM에 필요)
+check_command bedtools || echo -e "${YELLOW}⚠${NC} bedtools 없음 (conda install -c bioconda bedtools 권장)"
 
 # Docker 또는 Singularity 중 하나는 필요
 if command -v docker &> /dev/null; then
@@ -111,9 +117,12 @@ echo ""
 echo "2. 파이프라인 파일 확인..."
 echo "-------------------------------------------"
 
-check_file "$CONFIG_FILE" || ALL_OK=false
-check_file "Snakefile" || ALL_OK=false
-check_file "scripts/dmr_analysis.R" || ALL_OK=false
+check_file "$CONFIG_FILE"             || ALL_OK=false
+check_file "Snakefile"                || ALL_OK=false
+check_file "scripts/dmr_analysis.R"  || ALL_OK=false
+check_file "scripts/asm_analysis.R"  || ALL_OK=false
+check_file "scripts/trgt_outlier.py" || ALL_OK=false
+check_file "scripts/svpack"          || ALL_OK=false
 
 echo ""
 echo "3. config.yaml 검증..."
@@ -137,24 +146,41 @@ try:
             print(f"\033[0;31m✗\033[0m config.yaml에 '{key}' 섹션 누락")
             sys.exit(1)
     
-    # paths 확인
-    if 'wdl_out_dir' not in config['paths']:
-        print("\033[0;31m✗\033[0m paths.wdl_out_dir 누락")
+    # paths 확인 (batch_results_dir 또는 wdl_out_dir 중 하나 필요)
+    if 'batch_results_dir' not in config['paths'] and 'wdl_out_dir' not in config['paths']:
+        print("\033[0;31m✗\033[0m paths.batch_results_dir 또는 paths.wdl_out_dir 누락")
         sys.exit(1)
-    
+
+    # gff3_file 확인 (SV consequence 주석에 필요)
+    import os
+    gff3 = config['paths'].get('gff3_file', '')
+    if gff3 and os.path.exists(gff3):
+        print(f"\033[0;32m✓\033[0m gff3_file 발견됨: {os.path.basename(gff3)}")
+    elif gff3:
+        print(f"\033[1;33m⚠\033[0m gff3_file 경로가 존재하지 않음: {gff3}")
+        print(f"  SV consequence 주석 (annotate_sv_consequence) 실행 불가")
+    else:
+        print(f"\033[1;33m⚠\033[0m paths.gff3_file 미설정 — SV consequence 주석 비활성화")
+
     # samples 확인
     if not config['samples'].get('control') or not config['samples'].get('experimental'):
         print("\033[0;31m✗\033[0m 샘플 그룹 (control/experimental) 누락")
         sys.exit(1)
-    
+
     print("\033[0;32m✓\033[0m config.yaml 유효성 검사 통과")
-    
+
     # 샘플 정보 출력
     n_control = len(config['samples']['control'])
     n_exp = len(config['samples']['experimental'])
     print(f"  - Control 샘플: {n_control}개")
     print(f"  - Experimental 샘플: {n_exp}개")
-    print(f"  - WDL 출력 경로: {config['paths']['wdl_out_dir']}")
+    wdl_path = config['paths'].get('batch_results_dir') or config['paths'].get('wdl_out_dir', '(미설정)')
+    print(f"  - WDL 결과 경로: {wdl_path}")
+
+    # 선택적 분석 모듈 안내
+    print("\n  [선택적 분석 모듈 - filelist.csv에 해당 컬럼이 있을 때 자동 실행]")
+    print("  - TRGT 반복서열 분석  : phased_trgt_vcf 컬럼 필요")
+    print("  - ASM 메틸화 분석     : cpg_hap1_bed, cpg_hap2_bed 컬럼 필요")
     
 except yaml.YAMLError as e:
     print(f"\033[0;31m✗\033[0m {CONFIG_FILE} 파싱 오류: {e}")

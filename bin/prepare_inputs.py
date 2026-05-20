@@ -40,77 +40,81 @@ def find_wdl_output_dir(batch_results_dir, sample_id):
     return out_dir
 
 
+def _find_vcf(out_dir, subdir_name):
+    """out_dir 하위 subdir_name 폴더에서 VCF 파일과 인덱스를 반환한다."""
+    d = os.path.join(out_dir, subdir_name)
+    if not (os.path.exists(d) and os.path.isdir(d)):
+        return None, None
+    vcf_files = glob.glob(os.path.join(d, "*.vcf.gz"))
+    if not vcf_files:
+        return None, None
+    vcf = vcf_files[0]
+    idx = next((vcf + ext for ext in (".tbi", ".csi") if os.path.exists(vcf + ext)), None)
+    return vcf, idx
+
+
+def _find_bed(out_dir, subdir_name):
+    """out_dir 하위 subdir_name 폴더에서 BED(.gz) 파일과 인덱스를 반환한다."""
+    d = os.path.join(out_dir, subdir_name)
+    if not (os.path.exists(d) and os.path.isdir(d)):
+        return None, None
+    bed_files = glob.glob(os.path.join(d, "*.bed.gz")) or glob.glob(os.path.join(d, "*.bed"))
+    if not bed_files:
+        return None, None
+    bed = bed_files[0]
+    idx = bed + ".tbi" if os.path.exists(bed + ".tbi") else None
+    return bed, idx
+
+
 def find_required_files(out_dir, sample_id):
     """
     out 디렉토리에서 3차 분석에 필요한 파일들 찾기
-    
+
     필수 파일:
-    - phased_small_variant_vcf
-    - phased_sv_vcf
-    - cpg_combined_bed
-    - cpg_combined_bw
+    - phased_small_variant_vcf, phased_sv_vcf, cpg_combined_bed, cpg_combined_bw
+
+    선택 파일 (없어도 경고만):
+    - phased_trgt_vcf      : TRGT 반복서열 분석용
+    - cpg_hap1_bed         : Allele-specific methylation 분석용
+    - cpg_hap2_bed         : Allele-specific methylation 분석용
     """
-    files = {
-        'sample_id': sample_id,
-        'phased_small_variant_vcf': None,
-        'phased_small_variant_vcf_index': None,
-        'phased_sv_vcf': None,
-        'phased_sv_vcf_index': None,
-        'cpg_combined_bed': None,
-        'cpg_combined_bed_index': None,
-        'cpg_combined_bw': None,
-    }
-    
-    # Small variant VCF
-    vcf_dir = os.path.join(out_dir, "phased_small_variant_vcf")
-    if os.path.exists(vcf_dir) and os.path.isdir(vcf_dir):
-        # 디렉토리 내부의 VCF 파일 찾기
-        vcf_files = glob.glob(os.path.join(vcf_dir, "*.vcf.gz"))
-        if vcf_files:
-            vcf_file = vcf_files[0]  # 첫 번째 파일 사용
-            files['phased_small_variant_vcf'] = vcf_file
-            # 인덱스 찾기
-            if os.path.exists(vcf_file + ".tbi"):
-                files['phased_small_variant_vcf_index'] = vcf_file + ".tbi"
-            elif os.path.exists(vcf_file + ".csi"):
-                files['phased_small_variant_vcf_index'] = vcf_file + ".csi"
-    
-    # SV VCF
-    sv_dir = os.path.join(out_dir, "phased_sv_vcf")
-    if os.path.exists(sv_dir) and os.path.isdir(sv_dir):
-        # 디렉토리 내부의 VCF 파일 찾기
-        sv_files = glob.glob(os.path.join(sv_dir, "*.vcf.gz"))
-        if sv_files:
-            sv_file = sv_files[0]  # 첫 번째 파일 사용
-            files['phased_sv_vcf'] = sv_file
-            if os.path.exists(sv_file + ".tbi"):
-                files['phased_sv_vcf_index'] = sv_file + ".tbi"
-            elif os.path.exists(sv_file + ".csi"):
-                files['phased_sv_vcf_index'] = sv_file + ".csi"
-    
-    # CpG BED
-    bed_dir = os.path.join(out_dir, "cpg_combined_bed")
-    if os.path.exists(bed_dir) and os.path.isdir(bed_dir):
-        # 디렉토리 내부의 BED 파일 찾기
-        bed_files = glob.glob(os.path.join(bed_dir, "*.bed.gz"))
-        if not bed_files:
-            bed_files = glob.glob(os.path.join(bed_dir, "*.bed"))
-        if bed_files:
-            bed_file = bed_files[0]
-            files['cpg_combined_bed'] = bed_file
-            if os.path.exists(bed_file + ".tbi"):
-                files['cpg_combined_bed_index'] = bed_file + ".tbi"
-    
-    # CpG BigWig
+    files = {'sample_id': sample_id}
+
+    # ── 필수 파일 ──────────────────────────────────────────────────────────────
+    vcf, idx = _find_vcf(out_dir, "phased_small_variant_vcf")
+    files['phased_small_variant_vcf'] = vcf
+    files['phased_small_variant_vcf_index'] = idx
+
+    sv, sv_idx = _find_vcf(out_dir, "phased_sv_vcf")
+    files['phased_sv_vcf'] = sv
+    files['phased_sv_vcf_index'] = sv_idx
+
+    bed, bed_idx = _find_bed(out_dir, "cpg_combined_bed")
+    files['cpg_combined_bed'] = bed
+    files['cpg_combined_bed_index'] = bed_idx
+
     bw_dir = os.path.join(out_dir, "cpg_combined_bw")
-    if os.path.exists(bw_dir) and os.path.isdir(bw_dir):
-        # 디렉토리 내부의 BigWig 파일 찾기
-        bw_files = glob.glob(os.path.join(bw_dir, "*.bw"))
-        if not bw_files:
-            bw_files = glob.glob(os.path.join(bw_dir, "*.bigWig"))
-        if bw_files:
-            files['cpg_combined_bw'] = bw_files[0]
-    
+    bw_files = (glob.glob(os.path.join(bw_dir, "*.bw")) +
+                glob.glob(os.path.join(bw_dir, "*.bigWig"))) if os.path.isdir(bw_dir) else []
+    files['cpg_combined_bw'] = bw_files[0] if bw_files else None
+
+    # ── 선택 파일 ──────────────────────────────────────────────────────────────
+    trgt, trgt_idx = _find_vcf(out_dir, "phased_trgt_vcf")
+    files['phased_trgt_vcf'] = trgt or ''
+    files['phased_trgt_vcf_index'] = trgt_idx or ''
+    if trgt:
+        print(f"     └─ TRGT VCF 발견: {os.path.basename(trgt)}")
+
+    hap1, _ = _find_bed(out_dir, "cpg_hap1_bed")
+    files['cpg_hap1_bed'] = hap1 or ''
+    if hap1:
+        print(f"     └─ Hap1 BED 발견: {os.path.basename(hap1)}")
+
+    hap2, _ = _find_bed(out_dir, "cpg_hap2_bed")
+    files['cpg_hap2_bed'] = hap2 or ''
+    if hap2:
+        print(f"     └─ Hap2 BED 발견: {os.path.basename(hap2)}")
+
     return files
 
 
@@ -182,9 +186,12 @@ def create_filelist_csv(batch_results_dir, samples, output_csv):
                 'phased_small_variant_vcf', 'phased_small_variant_vcf_index',
                 'phased_sv_vcf', 'phased_sv_vcf_index',
                 'cpg_combined_bed', 'cpg_combined_bed_index',
-                'cpg_combined_bw'
+                'cpg_combined_bw',
+                # 선택적 파일
+                'phased_trgt_vcf', 'phased_trgt_vcf_index',
+                'cpg_hap1_bed', 'cpg_hap2_bed',
             ]
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
             writer.writeheader()
             writer.writerows(all_files)
         

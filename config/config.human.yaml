@@ -7,6 +7,7 @@ paths:
   batch_results_dir: "/data_4tb/hifi-human-wgs-wdl-custom/batch_results"
   ref_genome: "/data/references/GRCh38/GRCh38.fa"
   vep_cache: "/data/vep_cache/homo_sapiens/110_GRCh38"
+  gff3_file: "/data_4tb/hifi-human-wgs-wdl-custom/hifi-wdl-resources-v3.1.0/GRCh38/ensembl.GRCh38.101.reformatted.gff3.gz"
   output_dir: "./human_analysis_results"
   filelist_csv: "filelist.csv"
 
@@ -15,10 +16,19 @@ samples:
   control:
     - KTY9537
     - LDK6217
-  
+
   experimental:
     - 15_JANG_SJ
     - 16_BYUN_HY
+
+  # 다중 군 정의 (3군 이상일 때 주석 해제 후 사용)
+  # groups:
+  #   control:
+  #     - KTY9537
+  #     - LDK6217
+  #   treated:
+  #     - 15_JANG_SJ
+  #     - 16_BYUN_HY
 
 # 3차 분석 파라미터
 parameters:
@@ -62,6 +72,27 @@ parameters:
     min_cpg_sites: 3
     smoothing_span: 500
 
+  # TRGT 반복서열 분석
+  trgt:
+    min_spanning_depth: 5
+    expansion_buffer: 0
+
+  # ASM (Allele-Specific Methylation) 분석
+  asm:
+    p_value_cutoff: 0.05
+    min_methylation_diff: 0.2
+    min_cpg_sites: 3
+    smoothing_span: 500
+
+  # 코호트 수준 통계 분석 (Phase 4/5)
+  cohort:
+    min_impact: "HIGH|MODERATE"
+    sv_consequence_types:
+      - "sv:cds"
+      - "sv:utr"
+    min_samples_with_event: 1
+    fdr_cutoff: 0.05
+
 # 컨테이너 이미지
 containers:
   pacbio_slivar: "docker://quay.io/pacbio/slivar:latest"
@@ -86,3 +117,23 @@ resources:
   dmr:
     threads: 4
     mem_mb: 16000
+
+  sv_consequence:
+    threads: 2
+    mem_mb: 4000
+
+  trgt:
+    threads: 2
+    mem_mb: 4000
+
+  asm:
+    threads: 4
+    mem_mb: 8000
+
+  cohort_burden:
+    threads: 4
+    mem_mb: 8000
+
+  trgt_compare:
+    threads: 2
+    mem_mb: 4000

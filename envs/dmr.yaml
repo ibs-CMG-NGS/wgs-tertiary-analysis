@@ -15,3 +15,7 @@ dependencies:
   - r-cairo
   - cairo
   - freetype
+  - r-pheatmap
+  - r-jsonlite
+  - r-dplyr
+  - r-tidyr

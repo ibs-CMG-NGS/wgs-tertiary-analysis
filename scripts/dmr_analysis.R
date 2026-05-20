@@ -436,13 +436,12 @@ if (has_diff_methy) {
               100 * sum(dmr_results$diff_methy < 0, na.rm=TRUE) / nrow(dmr_results)))
   cat(sprintf("평균 메틸화 차이: %.3f\n", mean(abs(dmr_results$diff_methy), na.rm=TRUE)))
 }
-            100 * sum(dmr_results$diff_methy > 0) / nrow(dmr_results)))
-cat(sprintf("Hypo-메틸화 DMR: %d (%.1f%%)\n", 
-            sum(dmr_results$diff_methy < 0),
-            100 * sum(dmr_results$diff_methy < 0) / nrow(dmr_results)))
-cat(sprintf("평균 DMR 길이: %.0f bp\n", mean(dmr_results$length)))
-cat(sprintf("평균 CpG 사이트 수: %.1f\n", mean(dmr_results$nCG)))
-cat(sprintf("평균 메틸화 차이: %.3f\n", mean(abs(dmr_results$diff_methy))))
+if ("length" %in% colnames(dmr_results)) {
+  cat(sprintf("평균 DMR 길이: %.0f bp\n", mean(dmr_results$length, na.rm=TRUE)))
+}
+if ("nCG" %in% colnames(dmr_results)) {
+  cat(sprintf("평균 CpG 사이트 수: %.1f\n", mean(dmr_results$nCG, na.rm=TRUE)))
+}
 cat("================================================================================\n")
 
 cat("\n분석 완료!\n")
