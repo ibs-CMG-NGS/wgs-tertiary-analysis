@@ -8,6 +8,8 @@
 3rd_analysis_results/
 results/
 output/
+h2o2_analysis_results/
+h2o2_analysis_results_joint/
 
 # 로그 파일
 *.log

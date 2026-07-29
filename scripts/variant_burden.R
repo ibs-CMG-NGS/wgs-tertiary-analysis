@@ -11,14 +11,16 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 
+source("scripts/report_common.R")
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 option_list <- list(
-  make_option("--input-dir",   type="character", help="canonical_impacts.tsv 파일들이 있는 디렉토리"),
-  make_option("--groups",      type="character", help="그룹 정의 JSON (예: {\"ctrl\":[\"s1\",\"s2\"]})"),
-  make_option("--min-impact",  type="character", default="HIGH|MODERATE", help="포함할 IMPACT 패턴 (regex)"),
-  make_option("--fdr-cutoff",  type="double",    default=0.05,            help="FDR 임계값"),
-  make_option("--output-csv",  type="character", help="결과 CSV 경로"),
-  make_option("--output-pdf",  type="character", help="시각화 PDF 경로")
+  make_option("--input-dir",      type="character", help="canonical_impacts.tsv 파일들이 있는 디렉토리"),
+  make_option("--groups",         type="character", help="그룹 정의 JSON (예: {\"ctrl\":[\"s1\",\"s2\"]})"),
+  make_option("--min-impact",     type="character", default="HIGH|MODERATE", help="포함할 IMPACT 패턴 (regex)"),
+  make_option("--fdr-cutoff",     type="double",    default=0.05,            help="FDR 임계값"),
+  make_option("--output-csv",     type="character", help="결과 CSV 경로"),
+  make_option("--output-svg-dir", type="character", help="시각화 SVG 저장 디렉토리")
 )
 opt <- parse_args(OptionParser(option_list=option_list))
 
@@ -27,7 +29,7 @@ input_dir   <- opt$`input-dir`
 min_impact  <- opt$`min-impact`
 fdr_cutoff  <- opt$`fdr-cutoff`
 out_csv     <- opt$`output-csv`
-out_pdf     <- opt$`output-pdf`
+out_svg_dir <- opt$`output-svg-dir`
 
 # ── 데이터 로드 ──────────────────────────────────────────────────────────────
 sample_group <- stack(groups)
@@ -54,7 +56,7 @@ for (s in sample_group$sample) {
 if (length(all_data) == 0) {
   message("ERROR: 로드된 데이터가 없습니다.")
   write.csv(data.frame(), out_csv, row.names=FALSE)
-  pdf(out_pdf); dev.off()
+  write_placeholder_svg(out_svg_dir, "로드된 데이터 없음")
   quit(status=0)
 }
 
@@ -66,7 +68,7 @@ combined <- combined[grepl(min_impact, combined$IMPACT, ignore.case=FALSE), ]
 if (nrow(combined) == 0) {
   message("WARNING: 필터 후 데이터 없음 (min_impact=", min_impact, ")")
   write.csv(data.frame(), out_csv, row.names=FALSE)
-  pdf(out_pdf); dev.off()
+  write_placeholder_svg(out_svg_dir, paste("필터 후 데이터 없음 (min_impact=", min_impact, ")"))
   quit(status=0)
 }
 
@@ -109,23 +111,13 @@ results <- lapply(all_genes, function(gene) {
   counts <- group_mat[gene, ]   # 그룹별 variant 있는 샘플 수
   n_grp  <- n_per_group
 
-  if (length(group_names) == 2) {
-    # 2×2 Fisher's exact
-    tbl <- matrix(c(counts[1], n_grp[1] - counts[1],
-                    counts[2], n_grp[2] - counts[2]),
-                  nrow=2)
-    ft <- tryCatch(fisher.test(tbl), error=function(e) NULL)
-    pval <- if (!is.null(ft)) ft$p.value else NA_real_
-    or   <- if (!is.null(ft) && !is.null(ft$estimate)) unname(ft$estimate) else NA_real_
-  } else {
-    # χ² 검정 (3군+)
-    tbl <- rbind(counts, n_grp - counts)
-    ct <- tryCatch(chisq.test(tbl, simulate.p.value=(any(tbl < 5))), error=function(e) NULL)
-    pval <- if (!is.null(ct)) ct$p.value else NA_real_
-    or   <- NA_real_
-  }
+  test <- group_presence_test(counts, n_grp)
+  eff  <- compute_group_effect_size(counts, n_grp)
 
-  row <- data.frame(gene=gene, pvalue=pval, odds_ratio=or, stringsAsFactors=FALSE)
+  row <- data.frame(gene=gene, pvalue=test$pvalue, odds_ratio=test$odds_ratio,
+                     max_prop_diff=eff$max_prop_diff, group_max=eff$group_max, group_min=eff$group_min,
+                     odds_ratio_extreme=eff$odds_ratio_extreme, cramers_v=eff$cramers_v,
+                     stringsAsFactors=FALSE)
   for (grp in group_names) {
     row[[paste0("n_", grp)]] <- counts[grp]
   }
@@ -141,24 +133,23 @@ message("결과 저장: ", out_csv, " (", nrow(result_df), "개 유전자)")
 
 # ── 시각화 ───────────────────────────────────────────────────────────────────
 sig_df <- result_df[!is.na(result_df$fdr) & result_df$fdr < fdr_cutoff, ]
+plots <- list()
 
-pdf(out_pdf, width=12, height=9)
-
-# 1. -log10(FDR) barplot (top 30)
-top30 <- head(result_df[!is.na(result_df$fdr), ], 30)
-top30$log_fdr <- -log10(pmax(top30$fdr, 1e-300))
+# 1. Top 30 유전자 (raw p-value 기준 — FDR은 n=3/group에서 대부분 편평해 순위에 못 씀)
+#    막대 색으로 Cramer's V(효과크기) 표시
+top30 <- head(result_df[order(result_df$pvalue, na.last=TRUE), ], 30)
+top30$log_p <- -log10(pmax(top30$pvalue, 1e-300))
 top30$gene <- factor(top30$gene, levels=rev(top30$gene))
 
-p1 <- ggplot(top30, aes(x=gene, y=log_fdr)) +
-  geom_col(aes(fill=log_fdr), show.legend=FALSE) +
-  scale_fill_gradient(low="steelblue", high="firebrick") +
-  geom_hline(yintercept=-log10(fdr_cutoff), linetype="dashed", color="red") +
+plots[["01_top30_genes"]] <- ggplot(top30, aes(x=gene, y=log_p, fill=cramers_v)) +
+  geom_col() +
+  scale_fill_gradient(low="steelblue", high="firebrick", name="Cramer's V\n(효과크기)", limits=c(0,1)) +
+  geom_hline(yintercept=-log10(0.05), linetype="dashed", color="grey40") +
   coord_flip() +
-  labs(title="Top 30 유전자 — Small Variant Burden",
-       x=NULL, y="-log10(FDR)",
-       subtitle=paste("FDR 임계값:", fdr_cutoff, "| IMPACT:", min_impact)) +
+  labs(title="Top 30 유전자 — Small Variant Burden (raw p-value 순위, 색=효과크기)",
+       x=NULL, y="-log10(raw p-value)",
+       subtitle=paste("점선 = raw p 0.05 (FDR 아님) | IMPACT:", min_impact)) +
   theme_bw(base_size=11)
-print(p1)
 
 # 2. 군별 총 burden boxplot (샘플별 HIGH/MODERATE variant 수)
 burden_per_sample <- combined %>%
@@ -166,7 +157,7 @@ burden_per_sample <- combined %>%
   summarise(n_variants=n(), .groups="drop") %>%
   left_join(sample_group, by="sample")
 
-p2 <- ggplot(burden_per_sample, aes(x=group, y=n_variants, color=group)) +
+plots[["02_burden_boxplot"]] <- ggplot(burden_per_sample, aes(x=group, y=n_variants, color=group)) +
   geom_boxplot(outlier.shape=NA, width=0.5) +
   geom_jitter(width=0.15, size=2) +
   scale_color_brewer(palette="Set1") +
@@ -174,11 +165,30 @@ p2 <- ggplot(burden_per_sample, aes(x=group, y=n_variants, color=group)) +
        x="그룹", y=paste("변이 수 (IMPACT:", min_impact, ")"),
        color="그룹") +
   theme_bw(base_size=11)
-print(p2)
 
-# 3. Bubble plot — 유의 유전자 (FDR < 임계값)
-if (nrow(sig_df) > 0) {
-  top_sig <- head(sig_df, 30)
+# 3. 효과크기 vs 유의성 ("volcano"): x=log2(OR_extreme), y=-log10(raw p), color=Cramer's V, size=max_prop_diff
+volcano_df <- result_df[!is.na(result_df$pvalue) & !is.na(result_df$odds_ratio_extreme), ]
+if (nrow(volcano_df) > 0) {
+  volcano_df$log2_or <- log2(pmax(volcano_df$odds_ratio_extreme, 1e-10))
+  volcano_df$log_p   <- -log10(pmax(volcano_df$pvalue, 1e-300))
+  label_df <- head(volcano_df[order(volcano_df$pvalue), ], 10)
+
+  plots[["03_effect_size_vs_significance"]] <- ggplot(volcano_df, aes(x=log2_or, y=log_p, color=cramers_v, size=max_prop_diff)) +
+    geom_point(alpha=0.7) +
+    scale_color_gradient(low="steelblue", high="firebrick", name="Cramer's V", limits=c(0,1)) +
+    scale_size_continuous(range=c(1, 6), name="침투율 차이\n(max_prop_diff)") +
+    geom_hline(yintercept=-log10(0.05), linetype="dashed", color="grey40") +
+    geom_text(data=label_df, aes(label=gene), size=2.8, color="black",
+              vjust=-0.8, check_overlap=TRUE, show.legend=FALSE) +
+    labs(title="유전자별 효과크기 vs 유의성 (Small Variant Burden)",
+         subtitle="x축: 최고/최저 군 오즈비(Haldane-Anscombe 보정, fold-change 성격) — 우측일수록 군간 차이 큼",
+         x="log2(odds ratio, 최고군 vs 최저군)", y="-log10(raw p-value)") +
+    theme_bw(base_size=11)
+}
+
+# 4. Bubble plot — Top 30 유전자(raw p 순위) 군별 분포 (FDR 게이트 없이, 참고용 원본 유지)
+top_sig <- head(result_df[order(result_df$pvalue, na.last=TRUE), ], 30)
+if (nrow(top_sig) > 0) {
   long_df <- do.call(rbind, lapply(group_names, function(grp) {
     data.frame(gene  = top_sig$gene,
                group = grp,
@@ -186,23 +196,20 @@ if (nrow(sig_df) > 0) {
                stringsAsFactors=FALSE)
   }))
   long_df$gene <- factor(long_df$gene,
-                         levels=rev(top_sig$gene[order(top_sig$fdr)]))
+                         levels=rev(top_sig$gene[order(top_sig$pvalue)]))
 
-  p3 <- ggplot(long_df, aes(x=group, y=gene, size=count, color=group)) +
+  plots[["04_top30_group_bubble"]] <- ggplot(long_df, aes(x=group, y=gene, size=count, color=group)) +
     geom_point(alpha=0.7) +
     scale_size_continuous(range=c(2, 12), name="샘플 수") +
     scale_color_brewer(palette="Set1", name="그룹") +
-    labs(title=paste("유의 유전자 (FDR <", fdr_cutoff, ") — 군별 분포"),
+    labs(title="Top 30 유전자(raw p 순위) — 군별 분포",
+         subtitle="주의: FDR 유의 기준 아님 (n=3/group에서 FDR<0.05 도달 사실상 불가)",
          x="그룹", y="유전자") +
     theme_bw(base_size=11) +
     theme(axis.text.y=element_text(size=8))
-  print(p3)
-} else {
-  plot.new()
-  text(0.5, 0.5, paste("FDR <", fdr_cutoff, "인 유의 유전자 없음"), cex=1.4)
 }
 
-# 4. Heatmap (pheatmap 있으면 사용, 없으면 ggplot 대체)
+# 5. Heatmap (pheatmap 있으면 사용, 없으면 ggplot 대체)
 if (nrow(result_df) > 0 && ncol(mat) > 0) {
   top_genes <- head(result_df$gene[!is.na(result_df$fdr)], 40)
   hm_mat <- mat[top_genes[top_genes %in% rownames(mat)], , drop=FALSE]
@@ -210,12 +217,15 @@ if (nrow(result_df) > 0 && ncol(mat) > 0) {
   if (requireNamespace("pheatmap", quietly=TRUE) && nrow(hm_mat) > 1 && ncol(hm_mat) > 1) {
     annot_col <- data.frame(Group=sample_group$group[match(colnames(hm_mat), sample_group$sample)],
                              row.names=colnames(hm_mat))
+    dir.create(out_svg_dir, showWarnings=FALSE, recursive=TRUE)
+    svglite::svglite(file.path(out_svg_dir, "05_variant_heatmap.svg"), width=12, height=9)
     pheatmap::pheatmap(hm_mat,
       color=c("white", "firebrick3"),
       annotation_col=annot_col,
       cluster_rows=TRUE, cluster_cols=FALSE,
       main="Top 40 유전자 — Variant 유무 Heatmap",
       fontsize_row=7, fontsize_col=8)
+    grDevices::dev.off()
   } else {
     hm_long <- as.data.frame(as.table(hm_mat))
     colnames(hm_long) <- c("gene", "sample", "has_variant")
@@ -224,7 +234,7 @@ if (nrow(result_df) > 0 && ncol(mat) > 0) {
     hm_long$sample <- factor(hm_long$sample,
                              levels=sample_group$sample[order(sample_group$group)])
 
-    p4 <- ggplot(hm_long, aes(x=sample, y=gene, fill=factor(has_variant))) +
+    plots[["05_variant_heatmap"]] <- ggplot(hm_long, aes(x=sample, y=gene, fill=factor(has_variant))) +
       geom_tile(color="grey90") +
       scale_fill_manual(values=c("0"="white", "1"="firebrick3"),
                         name="Variant", labels=c("없음","있음")) +
@@ -234,9 +244,8 @@ if (nrow(result_df) > 0 && ncol(mat) > 0) {
       theme_bw(base_size=9) +
       theme(axis.text.x=element_text(angle=45, hjust=1),
             axis.text.y=element_text(size=7))
-    print(p4)
   }
 }
 
-dev.off()
-message("시각화 저장: ", out_pdf)
+save_svg_plots(plots, out_svg_dir, width=12, height=9)
+message("시각화 저장: ", out_svg_dir)

@@ -12,6 +12,8 @@ suppressPackageStartupMessages({
   library(data.table)
 })
 
+source("scripts/report_common.R")
+
 # ================================================================================
 # 커맨드 라인 인자 파싱
 # ================================================================================
@@ -23,8 +25,8 @@ option_list <- list(
               help="Experimental 샘플 BED 파일 목록 (텍스트 파일)", metavar="character"),
   make_option(c("--output-csv"), type="character", default="dmr_results.csv",
               help="DMR 결과 CSV 파일 경로 [default= %default]", metavar="character"),
-  make_option(c("--output-pdf"), type="character", default="dmr_plots.pdf",
-              help="DMR 시각화 PDF 파일 경로 [default= %default]", metavar="character"),
+  make_option(c("--output-svg-dir"), type="character", default="dmr_svg",
+              help="DMR 시각화 SVG 저장 디렉토리 [default= %default]", metavar="character"),
   make_option(c("--pvalue"), type="double", default=0.05,
               help="p-value 임계값 [default= %default]", metavar="number"),
   make_option(c("--min-diff"), type="double", default=0.1,
@@ -55,86 +57,7 @@ cat(sprintf("최소 CpG 사이트: %d\n", opt$`min-cpg`))
 cat("================================================================================\n\n")
 
 # ================================================================================
-# BED 파일 읽기 함수
-# ================================================================================
-
-read_cpg_bed <- function(bed_file) {
-  cat(sprintf("파일 로딩 중: %s\n", bed_file))
-  
-  # 파일 존재 확인
-  if (!file.exists(bed_file)) {
-    cat(sprintf("  ✗ 오류: 파일이 존재하지 않습니다: %s\n", bed_file))
-    return(NULL)
-  }
-  
-  # 파일 크기 확인
-  file_size <- file.info(bed_file)$size
-  if (file_size == 0) {
-    cat(sprintf("  ✗ 오류: 파일이 비어있습니다: %s\n", bed_file))
-    return(NULL)
-  }
-  
-  cat(sprintf("  파일 크기: %.2f MB\n", file_size / (1024^2)))
-  
-  # PacBio CpG BED 형식 (aligned_bam_to_cpg_scores 출력):
-  # 9 컬럼: chrom, begin, end, mod_score, type, cov, est_mod_count, est_unmod_count, discretized_mod_score
-  # Header lines start with #
-  tryCatch({
-    # fread로 읽기 - comment 문자로 # 지정하여 헤더 라인 스킵
-    dt <- fread(bed_file, skip="#chrom", header=TRUE, sep="\t", showProgress=FALSE)
-    
-    if (nrow(dt) == 0) {
-      cat(sprintf("  ✗ 오류: 파일에 데이터가 없습니다: %s\n", bed_file))
-      return(NULL)
-    }
-    
-    cat(sprintf("  읽은 행 수: %s\n", format(nrow(dt), big.mark=",")))
-    cat(sprintf("  컬럼 수: %d\n", ncol(dt)))
-    
-    # 컬럼명 확인 및 정규화
-    if (ncol(dt) < 7) {
-      cat(sprintf("  ✗ 오류: 예상된 컬럼 수가 부족합니다 (최소 7개 필요, 현재 %d개)\n", ncol(dt)))
-      cat("  첫 5행:\n")
-      print(head(dt, 5))
-      return(NULL)
-    }
-    
-    # 컬럼명이 다를 경우를 대비하여 표준 이름으로 설정
-    expected_cols <- c("chrom", "begin", "end", "mod_score", "type", 
-                       "cov", "est_mod_count", "est_unmod_count", "discretized_mod_score")
-    if (ncol(dt) >= length(expected_cols)) {
-      colnames(dt)[1:length(expected_cols)] <- expected_cols
-    }
-    
-    # DSS 형식으로 변환
-    # X = methylated reads (est_mod_count), N = total coverage (cov)
-    dss_data <- data.frame(
-      chr = as.character(dt$chrom),
-      pos = as.integer(dt$begin),
-      N = as.integer(dt$cov),
-      X = as.integer(dt$est_mod_count)
-    )
-    
-    # NA 제거 및 필터링: coverage > 0
-    dss_data <- na.omit(dss_data)
-    dss_data <- dss_data[dss_data$N > 0, ]
-    
-    if (nrow(dss_data) == 0) {
-      cat(sprintf("  ✗ 오류: 유효한 CpG 사이트가 없습니다 (coverage > 0)\n"))
-      return(NULL)
-    }
-    
-    cat(sprintf("  ✓ 성공: %s CpG 사이트 로드됨\n", format(nrow(dss_data), big.mark=",")))
-    
-    return(dss_data)
-  }, error = function(e) {
-    cat(sprintf("  ✗ 오류: %s\n", e$message))
-    return(NULL)
-  })
-}
-
-# ================================================================================
-# Control 및 Experimental 샘플 로드
+# Control 및 Experimental 샘플 로드 (read_cpg_bed()는 report_common.R 공유 함수)
 # ================================================================================
 
 # Control 샘플 목록 읽기
@@ -149,8 +72,8 @@ cat(sprintf("\nControl 샘플 수: %d\n", length(control_files)))
 cat(sprintf("Experimental 샘플 수: %d\n\n", length(experimental_files)))
 
 # 데이터 로드
-control_data_list <- lapply(control_files, read_cpg_bed)
-experimental_data_list <- lapply(experimental_files, read_cpg_bed)
+control_data_list <- lapply(control_files, read_cpg_bed, on_error="warn")
+experimental_data_list <- lapply(experimental_files, read_cpg_bed, on_error="warn")
 
 # NULL 제거 (로드 실패한 파일)
 control_data_list <- control_data_list[!sapply(control_data_list, is.null)]
@@ -208,7 +131,7 @@ cat("DML 테스트 완료\n")
 # DMR (Differential Methylation Region) 호출
 # ================================================================================
 
-cat(sprintf("\nDMR 호출 중 (p-value < %.3f, delta > %.2f)...\n", 
+cat(sprintf("\nDMR 호출 중 (p-value < %.3f, delta > %.2f)...\n",
             opt$pvalue, opt$`min-diff`))
 
 dmrs <- callDMR(
@@ -222,14 +145,11 @@ dmrs <- callDMR(
 if (nrow(dmrs) == 0) {
   cat("\n경고: 유의한 DMR이 발견되지 않았습니다.\n")
   cat("파라미터를 조정하거나 샘플 수를 늘려보세요.\n\n")
-  
+
   # 빈 결과 저장
   write.csv(data.frame(), opt$`output-csv`, row.names=FALSE)
-  pdf(opt$`output-pdf`)
-  plot.new()
-  text(0.5, 0.5, "유의한 DMR 없음", cex=2)
-  dev.off()
-  
+  write_placeholder_svg(opt$`output-svg-dir`, "유의한 DMR 없음")
+
   quit(save="no", status=0)
 }
 
@@ -274,20 +194,24 @@ dmr_results <- tryCatch({
   as.data.frame(dmrs)
 })
 
-# p-value 추가 (있는 경우)
-if ("pval" %in% dmr_cols) {
-  dmr_results$pvalue <- dmrs$pval
-  dmr_results$fdr <- p.adjust(dmrs$pval, method="BH")
-} else {
-  dmr_results$pvalue <- NA
-  dmr_results$fdr <- NA
-}
+# p-value: DSS::callDMR()은 영역(region) 단위 p-value를 제공하지 않는다 (areaStat만 반환).
+# 시도해본 areaStat/sqrt(nCG) 기반 결합검정(Stouffer 근사, 개별 CpG 독립 가정)은 인접 CpG의
+# 공간적 상관관계(smoothing으로 인해 더 심함)를 무시해 심하게 반코저버티브였다 (전체 영역의
+# 99%+ 가 FDR<0.05로 나오는 등 비현실적) — 실사용 불가로 판단해 폐기.
+# 엄밀한 영역 단위 검정을 하려면 permutation test(그룹 라벨을 섞어 areaStat의 귀무분포를
+# 영역 길이/nCG별로 추정)가 필요하며 이는 별도 작업으로 남긴다.
+# 현재는 정직하게 NA로 두고, callDMR() 자체에 이미 적용된 개별 CpG p-threshold + delta +
+# minCG 필터를 "선별 기준"으로, areaStat을 "효과크기 순위"로만 사용한다.
+dmr_results$pvalue <- NA
+dmr_results$fdr <- NA
 
-# FDR로 정렬 (FDR이 존재하는 경우)
+# FDR로 정렬 (FDR이 존재하는 경우), 없으면 |areaStat| 내림차순(효과크기 순위)으로 정렬
 if ("fdr" %in% colnames(dmr_results) && !all(is.na(dmr_results$fdr))) {
   dmr_results <- dmr_results[order(dmr_results$fdr), ]
 } else if ("pvalue" %in% colnames(dmr_results) && !all(is.na(dmr_results$pvalue))) {
   dmr_results <- dmr_results[order(dmr_results$pvalue), ]
+} else if ("areaStat" %in% colnames(dmr_results)) {
+  dmr_results <- dmr_results[order(-abs(dmr_results$areaStat)), ]
 }
 
 write.csv(dmr_results, opt$`output-csv`, row.names=FALSE)
@@ -300,9 +224,9 @@ cat(sprintf("  컬럼: %s\n", paste(colnames(dmr_results), collapse=", ")))
 # 시각화
 # ================================================================================
 
-cat(sprintf("\nDMR 시각화 중: %s\n", opt$`output-pdf`))
+cat(sprintf("\nDMR 시각화 중: %s\n", opt$`output-svg-dir`))
 
-pdf(opt$`output-pdf`, width=12, height=8)
+plots <- list()
 
 # diff_methy가 있는지 확인
 has_diff_methy <- "diff_methy" %in% colnames(dmr_results) && !all(is.na(dmr_results$diff_methy))
@@ -321,33 +245,30 @@ if (has_diff_methy) {
     theme_minimal() +
     labs(title="DMR 분포 (염색체별)",
          x="염색체", y="DMR 수")
-} +
-  theme(axis.text.x = element_text(angle=45, hjust=1))
-
-print(p1)
+}
+p1 <- p1 + theme(axis.text.x = element_text(angle=45, hjust=1))
+plots[["01_dmr_by_chrom"]] <- p1
 
 # 2. 메틸화 차이 분포
 if (has_diff_methy) {
-  p2 <- ggplot(dmr_results, aes(x=diff_methy)) +
+  plots[["02_methylation_diff_histogram"]] <- ggplot(dmr_results, aes(x=diff_methy)) +
     geom_histogram(bins=50, fill="steelblue", color="black") +
     geom_vline(xintercept=0, linetype="dashed", color="red") +
     theme_minimal() +
     labs(title="메틸화 차이 분포",
          x="메틸화 차이 (Experimental - Control)",
          y="빈도")
-  
-  print(p2)
 }
 
 # 3. Volcano plot
 has_fdr <- "fdr" %in% colnames(dmr_results) && !all(is.na(dmr_results$fdr))
 if (has_diff_methy && has_fdr) {
   dmr_results$log10_fdr <- -log10(dmr_results$fdr + 1e-300)  # 0 방지
-  p3 <- ggplot(dmr_results, aes(x=diff_methy, y=log10_fdr)) +
+  plots[["03_volcano"]] <- ggplot(dmr_results, aes(x=diff_methy, y=log10_fdr)) +
     geom_point(aes(color=abs(diff_methy) > opt$`min-diff` & fdr < opt$pvalue),
                alpha=0.6) +
     geom_hline(yintercept=-log10(opt$pvalue), linetype="dashed", color="red") +
-    geom_vline(xintercept=c(-opt$`min-diff`, opt$`min-diff`), 
+    geom_vline(xintercept=c(-opt$`min-diff`, opt$`min-diff`),
                linetype="dashed", color="blue") +
     theme_minimal() +
     labs(title="DMR Volcano Plot",
@@ -356,19 +277,17 @@ if (has_diff_methy && has_fdr) {
     scale_color_manual(values=c("grey", "red"),
                        labels=c("Not significant", "Significant"),
                        name="")
-  
-  print(p3)
 }
 
 # 4. Top 20 DMR (FDR 기준)
 if (has_fdr && has_diff_methy) {
   top_dmrs <- head(dmr_results, 20)
-  top_dmrs$region <- paste(top_dmrs$chr, ":", 
+  top_dmrs$region <- paste(top_dmrs$chr, ":",
                            format(top_dmrs$start, scientific=FALSE), "-",
                            format(top_dmrs$end, scientific=FALSE), sep="")
   top_dmrs$log10_fdr <- -log10(top_dmrs$fdr + 1e-300)
-  
-  p4 <- ggplot(top_dmrs, aes(x=reorder(region, log10_fdr), y=diff_methy)) +
+
+  plots[["04_top20_dmr"]] <- ggplot(top_dmrs, aes(x=reorder(region, log10_fdr), y=diff_methy)) +
     geom_bar(stat="identity", aes(fill=diff_methy > 0)) +
     coord_flip() +
     theme_minimal() +
@@ -380,16 +299,14 @@ if (has_fdr && has_diff_methy) {
                       labels=c("Hypo", "Hyper"),
                       name="") +
     theme(axis.text.y = element_text(size=8))
-  
-  print(p4)
 }
 
 # 5. DMR 크기 vs 유의성
 if (has_fdr && has_diff_methy && "length" %in% colnames(dmr_results)) {
   has_nCG <- "nCG" %in% colnames(dmr_results) && !all(is.na(dmr_results$nCG))
-  
+
   dmr_results$log10_fdr <- -log10(dmr_results$fdr + 1e-300)
-  
+
   if (has_nCG) {
     p5 <- ggplot(dmr_results, aes(x=length, y=log10_fdr)) +
       geom_point(aes(color=diff_methy, size=nCG), alpha=0.6) +
@@ -410,11 +327,10 @@ if (has_fdr && has_diff_methy && "length" %in% colnames(dmr_results)) {
            x="DMR 길이 (bp)",
            y="-log10(FDR)")
   }
-  
-  print(p5)
+  plots[["05_size_vs_significance"]] <- p5
 }
 
-dev.off()
+save_svg_plots(plots, opt$`output-svg-dir`, width=12, height=8)
 
 cat("시각화 완료\n")
 
@@ -428,7 +344,7 @@ cat("===========================================================================
 cat(sprintf("총 DMR 수: %d\n", nrow(dmr_results)))
 
 if (has_diff_methy) {
-  cat(sprintf("Hyper-메틸화 DMR: %d (%.1f%%)\n", 
+  cat(sprintf("Hyper-메틸화 DMR: %d (%.1f%%)\n",
               sum(dmr_results$diff_methy > 0, na.rm=TRUE),
               100 * sum(dmr_results$diff_methy > 0, na.rm=TRUE) / nrow(dmr_results)))
   cat(sprintf("Hypo-메틸화 DMR: %d (%.1f%%)\n",
@@ -446,4 +362,4 @@ cat("===========================================================================
 
 cat("\n분석 완료!\n")
 cat(sprintf("결과 파일: %s\n", opt$`output-csv`))
-cat(sprintf("그래프 파일: %s\n", opt$`output-pdf`))
+cat(sprintf("그래프 디렉토리: %s\n", opt$`output-svg-dir`))

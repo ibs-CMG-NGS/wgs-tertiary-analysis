@@ -12,21 +12,23 @@ suppressPackageStartupMessages({
   library(tidyr)
 })
 
+source("scripts/report_common.R")
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 option_list <- list(
-  make_option("--input-dir",  type="character", help="trgt_summary.tsv 파일들이 있는 디렉토리"),
-  make_option("--groups",     type="character", help="그룹 정의 JSON"),
-  make_option("--fdr-cutoff", type="double",    default=0.05, help="FDR 임계값"),
-  make_option("--output-csv", type="character", help="결과 CSV 경로"),
-  make_option("--output-pdf", type="character", help="시각화 PDF 경로")
+  make_option("--input-dir",      type="character", help="trgt_summary.tsv 파일들이 있는 디렉토리"),
+  make_option("--groups",         type="character", help="그룹 정의 JSON"),
+  make_option("--fdr-cutoff",     type="double",    default=0.05, help="FDR 임계값"),
+  make_option("--output-csv",     type="character", help="결과 CSV 경로"),
+  make_option("--output-svg-dir", type="character", help="시각화 SVG 저장 디렉토리")
 )
 opt <- parse_args(OptionParser(option_list=option_list))
 
-groups     <- fromJSON(opt$`groups`)
-input_dir  <- opt$`input-dir`
-fdr_cutoff <- opt$`fdr-cutoff`
-out_csv    <- opt$`output-csv`
-out_pdf    <- opt$`output-pdf`
+groups      <- fromJSON(opt$`groups`)
+input_dir   <- opt$`input-dir`
+fdr_cutoff  <- opt$`fdr-cutoff`
+out_csv     <- opt$`output-csv`
+out_svg_dir <- opt$`output-svg-dir`
 
 group_names <- names(groups)
 
@@ -55,7 +57,7 @@ for (s in sample_group$sample) {
 if (length(all_data) == 0) {
   message("ERROR: 로드된 TRGT 데이터가 없습니다.")
   write.csv(data.frame(), out_csv, row.names=FALSE)
-  pdf(out_pdf); dev.off()
+  write_placeholder_svg(out_svg_dir, "로드된 TRGT 데이터 없음")
   quit(status=0)
 }
 
@@ -65,7 +67,7 @@ combined <- bind_rows(all_data) %>% left_join(sample_group, by="sample")
 if (!"allele1_len" %in% colnames(combined)) {
   message("ERROR: allele1_len 컬럼 없음")
   write.csv(data.frame(), out_csv, row.names=FALSE)
-  pdf(out_pdf); dev.off()
+  write_placeholder_svg(out_svg_dir, "allele1_len 컬럼 없음")
   quit(status=0)
 }
 
@@ -87,7 +89,7 @@ combined <- combined %>% filter(trid %in% trid_coverage$trid)
 if (nrow(combined) == 0) {
   message("WARNING: 2개 이상 그룹에서 공통 TRGT locus 없음")
   write.csv(data.frame(), out_csv, row.names=FALSE)
-  pdf(out_pdf); dev.off()
+  write_placeholder_svg(out_svg_dir, "2개 이상 그룹에서 공통 TRGT locus 없음")
   quit(status=0)
 }
 
@@ -172,8 +174,7 @@ message("결과 저장: ", out_csv, " (", nrow(result_df), "개 locus)")
 
 # ── 시각화 ───────────────────────────────────────────────────────────────────
 sig_df <- result_df[!is.na(result_df$fdr) & result_df$fdr < fdr_cutoff, ]
-
-pdf(out_pdf, width=12, height=9)
+plots <- list()
 
 # 1. Manhattan plot
 if ("chrom" %in% colnames(result_df) && "pos" %in% colnames(result_df)) {
@@ -200,14 +201,13 @@ if ("chrom" %in% colnames(result_df) && "pos" %in% colnames(result_df)) {
 
     sig_threshold <- -log10(fdr_cutoff / nrow(manhattan_df))
 
-    p1 <- ggplot(manhattan_df, aes(x=abs_pos, y=log_p, color=factor(chrom_num %% 2))) +
+    plots[["01_manhattan"]] <- ggplot(manhattan_df, aes(x=abs_pos, y=log_p, color=factor(chrom_num %% 2))) +
       geom_point(size=0.8, alpha=0.7) +
       geom_hline(yintercept=sig_threshold, linetype="dashed", color="red") +
       scale_color_manual(values=c("0"="steelblue","1"="navy"), guide="none") +
       labs(title="TRGT Manhattan Plot",
            x="염색체 (게놈 위치)", y="-log10(p값)") +
       theme_bw(base_size=10)
-    print(p1)
   }
 }
 
@@ -225,7 +225,7 @@ if (length(top_trids) > 0) {
   plot_df$trid_label <- factor(plot_df$trid_label,
                                 levels=unique(plot_df$trid_label[match(trid_order, plot_df$trid)]))
 
-  p2 <- ggplot(plot_df, aes(x=group, y=max_allele_len, color=group)) +
+  plots[["02_top20_boxplot"]] <- ggplot(plot_df, aes(x=group, y=max_allele_len, color=group)) +
     geom_boxplot(outlier.shape=NA, width=0.5) +
     geom_jitter(width=0.15, size=1.5, alpha=0.7) +
     scale_color_brewer(palette="Set1") +
@@ -235,7 +235,6 @@ if (length(top_trids) > 0) {
     theme_bw(base_size=9) +
     theme(axis.text.x=element_text(angle=30, hjust=1),
           strip.text=element_text(size=6))
-  print(p2)
 }
 
 # 3. Expanded repeat 비율 비교 (expanded 컬럼이 있을 때)
@@ -249,14 +248,13 @@ if ("status" %in% colnames(combined)) {
       .groups="drop"
     )
 
-  p3 <- ggplot(exp_rate, aes(x=group, y=pct_expanded, color=group)) +
+  plots[["03_expanded_repeat_pct"]] <- ggplot(exp_rate, aes(x=group, y=pct_expanded, color=group)) +
     geom_boxplot(outlier.shape=NA, width=0.5) +
     geom_jitter(width=0.15, size=2) +
     scale_color_brewer(palette="Set1") +
     labs(title="군별 Expanded Repeat 비율",
          x="그룹", y="Expanded repeat 비율 (%)", color="그룹") +
     theme_bw(base_size=11)
-  print(p3)
 }
 
 # 4. Effect size vs -log10(p) scatter
@@ -270,7 +268,7 @@ if ("median_len_" %in% paste(colnames(result_df), collapse="")) {
       mutate(log_p=-log10(pmax(pvalue, 1e-300)),
              sig=(fdr < fdr_cutoff) & !is.na(fdr))
 
-    p4 <- ggplot(scatter_df, aes(x=effect_size, y=log_p, color=sig)) +
+    plots[["04_effect_size_vs_significance"]] <- ggplot(scatter_df, aes(x=effect_size, y=log_p, color=sig)) +
       geom_point(alpha=0.6, size=1.5) +
       scale_color_manual(values=c("FALSE"="grey60","TRUE"="firebrick"),
                          name=paste("FDR <", fdr_cutoff)) +
@@ -278,9 +276,8 @@ if ("median_len_" %in% paste(colnames(result_df), collapse="")) {
            x="Allele 길이 차이 (median 범위, bp)",
            y="-log10(p값)") +
       theme_bw(base_size=11)
-    print(p4)
   }
 }
 
-dev.off()
-message("시각화 저장: ", out_pdf)
+save_svg_plots(plots, out_svg_dir, width=12, height=9)
+message("시각화 저장: ", out_svg_dir)

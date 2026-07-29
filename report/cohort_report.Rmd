@@ -1,0 +1,211 @@
+---
+title: "H2O2 Cohort 분석 리포트"
+subtitle: "`r params$dataset_label`"
+date: "`r format(Sys.time(), '%Y-%m-%d %H:%M')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: hide
+    df_print: paged
+    self_contained: false
+params:
+  output_dir: "h2o2_analysis_results"
+  groups_json: '{"A":[],"B":[],"C":[],"D":[]}'
+  dataset_label: "Single-sample calls"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+# Rmd는 report/ 아래에 있지만, source()는 저장소 루트 기준 상대경로를 쓰는
+# 다른 cohort 스크립트들과 동일한 규칙을 따르기 위해 knitr::current_input(dir=TRUE)로
+# 이 Rmd 파일의 전체 경로를 구해 루트를 명시적으로 계산한다(render 호출 시 cwd에 의존하지 않음).
+repo_root <- normalizePath(file.path(dirname(knitr::current_input(dir = TRUE)), ".."))
+knitr::opts_knit$set(root.dir = repo_root)
+source(file.path(repo_root, "scripts", "report_common.R"))
+
+library(jsonlite)
+
+cohort_dir  <- file.path(params$output_dir, "cohort")
+groups      <- fromJSON(params$groups_json)
+group_names <- names(groups)
+group_pairs <- if (length(group_names) >= 2) combn(group_names, 2, simplify=FALSE) else list()
+```
+
+# Overview
+
+```{r overview-table}
+sample_rows <- do.call(rbind, lapply(group_names, function(g) {
+  data.frame(group=g, sample=groups[[g]], stringsAsFactors=FALSE)
+}))
+DT::datatable(sample_rows, rownames=FALSE, options=list(pageLength=nrow(sample_rows), dom="t"))
+```
+
+데이터셋: **`r params$dataset_label`** (`r cohort_dir`)
+
+---
+
+# Small Variant (SNV/indel) Burden
+
+유전자별 HIGH/MODERATE impact 변이 보유 여부를 그룹 간 카이제곱/피셔 검정으로 비교.
+`gene`, `pvalue`, `fdr`, `cramers_v`, `n_<그룹>` 컬럼 참고 — n=3/그룹이라 FDR 대부분
+평탄화됨(raw p 순위가 실질적 참고 지표).
+
+```{r snv-table}
+fdr_table(file.path(cohort_dir, "variant_burden_stats.csv"))
+```
+
+```{r snv-svg, results='asis'}
+svg_gallery("variant_burden_svg", cohort_dir)
+```
+
+---
+
+# SV Burden
+
+## Single-sample calls {.tabset}
+
+### 결과 테이블
+```{r sv-single-table}
+fdr_table(file.path(cohort_dir, "sv_burden_stats.csv"))
+```
+
+### 그림
+```{r sv-single-svg, results='asis'}
+svg_gallery("sv_burden_svg", cohort_dir)
+```
+
+## Joint calls 주의사항
+
+> **joint calling SV burden 결과는 그대로 신뢰하지 말 것.** joint 트리
+> (`h2o2_analysis_results_joint`)의 SV burden에서 나온 다수의 FDR<0.05 히트는
+> multi-copy 유전자군 정렬 아티팩트로 판단됨 — genotype이 실제 처치 효과가
+> 아니라 반복서열 정렬 모호성에서 기인. 해당 결과를 인용할 때는 반드시 이 caveat을
+> 함께 명시한다.
+
+---
+
+# GO Geneset Burden {.tabset}
+
+개별 유전자 대신 산화스트레스/DNA손상복구 관련 유전자셋(targeted, 2개) 및 확장
+큐레이션 셋(curated, 20개) 단위로 집계 검정.
+
+## SV — targeted
+```{r geneset-sv-targeted-table}
+fdr_table(file.path(cohort_dir, "geneset_burden_sv.csv"), fdr_col="fdr_presence")
+```
+```{r geneset-sv-targeted-svg, results='asis'}
+svg_gallery("geneset_burden_sv_svg", cohort_dir)
+```
+
+## SV — curated
+```{r geneset-sv-curated-table}
+fdr_table(file.path(cohort_dir, "geneset_burden_sv_curated.csv"), fdr_col="fdr_presence")
+```
+```{r geneset-sv-curated-svg, results='asis'}
+svg_gallery("geneset_burden_sv_curated_svg", cohort_dir)
+```
+
+## Variant — targeted
+```{r geneset-variant-targeted-table}
+fdr_table(file.path(cohort_dir, "geneset_burden_variant.csv"), fdr_col="fdr_presence")
+```
+```{r geneset-variant-targeted-svg, results='asis'}
+svg_gallery("geneset_burden_variant_svg", cohort_dir)
+```
+
+## Variant — curated
+```{r geneset-variant-curated-table}
+fdr_table(file.path(cohort_dir, "geneset_burden_variant_curated.csv"), fdr_col="fdr_presence")
+```
+```{r geneset-variant-curated-svg, results='asis'}
+svg_gallery("geneset_burden_variant_curated_svg", cohort_dir)
+```
+
+---
+
+# DMR Pairwise {.tabset}
+
+그룹 쌍별 Differential Methylation Region (DSS). `pvalue`/`fdr`는 DSS::callDMR()이
+영역 단위 p-value를 제공하지 않아 항상 NA — `areaStat`을 효과크기 순위로 사용.
+
+```{r dmr-tabs, results='asis'}
+for (pr in group_pairs) {
+  g1 <- pr[1]; g2 <- pr[2]
+  cat(sprintf("\n\n## %s vs %s\n\n", g1, g2))
+  csv_path <- file.path(cohort_dir, sprintf("dmr_%s_vs_%s.csv", g1, g2))
+  svg_rel  <- sprintf("dmr_%s_vs_%s_svg", g1, g2)
+  cat("\n\n### 결과 테이블\n\n")
+  print(htmltools::tagList(fdr_table(csv_path)))
+  cat("\n\n### 그림\n\n")
+  svg_gallery(svg_rel, cohort_dir)
+}
+```
+
+---
+
+# TRGT Tandem Repeat Comparison
+
+```{r trgt-table}
+fdr_table(file.path(cohort_dir, "trgt_group_compare.csv"))
+```
+
+```{r trgt-svg, results='asis'}
+svg_gallery("trgt_group_compare_svg", cohort_dir)
+```
+
+---
+
+# ASM (Allele-Specific Methylation) — 샘플별
+
+그룹 비교가 아니라 동일 샘플의 hap1 vs hap2 메틸화 비교 (개체별 각인/ASM 후보 영역).
+
+```{r asm-tabs, results='asis'}
+asm_dir <- file.path(params$output_dir, "asm")
+if (!dir.exists(asm_dir)) {
+  cat("_(ASM 결과 없음:", asm_dir, ")_\n\n")
+} else {
+  asm_csvs <- sort(list.files(asm_dir, pattern="\\.asm_results\\.csv$"))
+  if (length(asm_csvs) == 0) {
+    cat("_(ASM 결과 없음)_\n\n")
+  } else {
+    for (f in asm_csvs) {
+      sample_name <- sub("\\.asm_results\\.csv$", "", f)
+      cat(sprintf("\n\n## %s\n\n", sample_name))
+      print(htmltools::tagList(fdr_table(file.path(asm_dir, f))))
+      svg_gallery(paste0(sample_name, ".asm_plots_svg"), asm_dir)
+    }
+  }
+}
+```
+
+---
+
+# Cohort Summary / Heterogeneity
+
+샘플단위 요약통계(변이 수, hom-peak %, VAF 등) 군간 비교 + 웰간 joint genotype
+불일치율 + 여러 독립 지표 간 순위 일관성(Kendall's W).
+
+```{r summary-table}
+fdr_table(file.path(cohort_dir, "summary_compare_stats.csv"))
+```
+
+```{r summary-svg, results='asis'}
+svg_gallery("summary_compare_svg", cohort_dir)
+```
+
+## HiFi 롱리드 고유 기능 분석 (선택)
+
+```{r hifi-svg, results='asis'}
+svg_gallery("hifi_native_svg", cohort_dir)
+```
+
+## 이질성 그라디언트 합의 (선택)
+
+5개 독립 방법(hom-peak%, joint discordance, copy-number 안정성, haplotype
+imbalance, ASM 후보 영역 수)이 가리키는 이질성 순위 종합.
+
+```{r heterogeneity-svg, results='asis'}
+svg_gallery("heterogeneity_consensus_svg", cohort_dir)
+```

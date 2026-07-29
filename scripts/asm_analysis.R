@@ -13,6 +13,8 @@ suppressPackageStartupMessages({
   library(data.table)
 })
 
+source("scripts/report_common.R")
+
 # ================================================================================
 # 커맨드 라인 인자
 # ================================================================================
@@ -26,8 +28,8 @@ option_list <- list(
               help="샘플 이름 (그래프 제목 등에 사용)", metavar="character"),
   make_option(c("--output-csv"), type="character", default="asm_results.csv",
               help="ASM 결과 CSV 파일 경로 [default= %default]", metavar="character"),
-  make_option(c("--output-pdf"), type="character", default="asm_plots.pdf",
-              help="ASM 시각화 PDF 파일 경로 [default= %default]", metavar="character"),
+  make_option(c("--output-svg-dir"), type="character", default="asm_svg",
+              help="ASM 시각화 SVG 저장 디렉토리 [default= %default]", metavar="character"),
   make_option(c("--pvalue"), type="double", default=0.05,
               help="p-value 임계값 [default= %default]", metavar="number"),
   make_option(c("--min-diff"), type="double", default=0.2,
@@ -57,55 +59,10 @@ cat(sprintf("최소 메틸화 차이: %.2f\n", opt$`min-diff`))
 cat(sprintf("최소 CpG 사이트: %d\n", opt$`min-cpg`))
 cat("================================================================================\n\n")
 
-# ================================================================================
-# BED 파일 읽기 (dmr_analysis.R와 동일한 형식)
-# ================================================================================
-
-read_cpg_bed <- function(bed_file, label) {
-  cat(sprintf("[%s] 파일 로딩 중: %s\n", label, bed_file))
-
-  if (!file.exists(bed_file)) {
-    stop(sprintf("파일이 존재하지 않습니다: %s", bed_file), call.=FALSE)
-  }
-  file_size <- file.info(bed_file)$size
-  if (file_size == 0) {
-    stop(sprintf("파일이 비어있습니다: %s", bed_file), call.=FALSE)
-  }
-  cat(sprintf("  파일 크기: %.2f MB\n", file_size / (1024^2)))
-
-  tryCatch({
-    dt <- fread(bed_file, skip="#chrom", header=TRUE, sep="\t", showProgress=FALSE)
-
-    if (nrow(dt) == 0) stop("데이터가 없습니다.", call.=FALSE)
-    if (ncol(dt) < 7)  stop(sprintf("컬럼 수 부족 (최소 7개 필요, 현재 %d개)", ncol(dt)), call.=FALSE)
-
-    expected_cols <- c("chrom", "begin", "end", "mod_score", "type",
-                       "cov", "est_mod_count", "est_unmod_count", "discretized_mod_score")
-    if (ncol(dt) >= length(expected_cols)) {
-      colnames(dt)[1:length(expected_cols)] <- expected_cols
-    }
-
-    dss_data <- data.frame(
-      chr = as.character(dt$chrom),
-      pos = as.integer(dt$begin),
-      N   = as.integer(dt$cov),
-      X   = as.integer(dt$est_mod_count)
-    )
-    dss_data <- na.omit(dss_data)
-    dss_data <- dss_data[dss_data$N > 0, ]
-
-    if (nrow(dss_data) == 0) stop("유효한 CpG 사이트 없음 (coverage > 0 필요)", call.=FALSE)
-
-    cat(sprintf("  ✓ %s CpG 사이트 로드됨\n", format(nrow(dss_data), big.mark=",")))
-    return(dss_data)
-
-  }, error = function(e) {
-    stop(sprintf("[%s] 로드 실패: %s", label, e$message), call.=FALSE)
-  })
-}
-
-hap1_data <- read_cpg_bed(opt$hap1, "Hap1")
-hap2_data <- read_cpg_bed(opt$hap2, "Hap2")
+# BED 파일 읽기: read_cpg_bed()는 report_common.R 공유 함수(dmr_analysis.R와 동일 형식).
+# on_error="stop": hap1/hap2 둘 다 필수이므로 로드 실패 시 즉시 중단.
+hap1_data <- read_cpg_bed(opt$hap1, "Hap1", on_error="stop")
+hap2_data <- read_cpg_bed(opt$hap2, "Hap2", on_error="stop")
 
 # ================================================================================
 # DSS BSseq 객체 생성
@@ -150,10 +107,7 @@ asms <- callDMR(
 if (nrow(asms) == 0) {
   cat("\n경고: 유의한 ASM 영역이 발견되지 않았습니다.\n")
   write.csv(data.frame(), opt$`output-csv`, row.names=FALSE)
-  pdf(opt$`output-pdf`)
-  plot.new()
-  text(0.5, 0.5, sprintf("유의한 ASM 없음 (샘플: %s)", opt$`sample-name`), cex=1.5)
-  dev.off()
+  write_placeholder_svg(opt$`output-svg-dir`, sprintf("유의한 ASM 없음 (샘플: %s)", opt$`sample-name`))
   quit(save="no", status=0)
 }
 
@@ -203,8 +157,8 @@ cat(sprintf("결과 저장 완료: %s (%d 행)\n", opt$`output-csv`, nrow(asm_re
 # 시각화 (4종)
 # ================================================================================
 
-cat(sprintf("\nASM 시각화 중: %s\n", opt$`output-pdf`))
-pdf(opt$`output-pdf`, width=12, height=8)
+cat(sprintf("\nASM 시각화 중: %s\n", opt$`output-svg-dir`))
+plots <- list()
 
 has_diff  <- "diff_methy" %in% colnames(asm_results) && !all(is.na(asm_results$diff_methy))
 has_fdr   <- "fdr"        %in% colnames(asm_results) && !all(is.na(asm_results$fdr))
@@ -232,18 +186,17 @@ if (has_diff) {
          x="염색체", y="ASM 영역 수") +
     theme(axis.text.x=element_text(angle=45, hjust=1))
 }
-print(p1)
+plots[["01_asm_by_chrom"]] <- p1
 
 # 2. 메틸화 차이 분포 (Hap1 - Hap2)
 if (has_diff) {
-  p2 <- ggplot(asm_results, aes(x=diff_methy)) +
+  plots[["02_methylation_diff_histogram"]] <- ggplot(asm_results, aes(x=diff_methy)) +
     geom_histogram(bins=40, fill="steelblue", color="white") +
     geom_vline(xintercept=0, linetype="dashed", color="red") +
     theme_minimal() +
     labs(title=sprintf("[%s] 메틸화 차이 분포 (Hap1 - Hap2)", sample_label),
          x="메틸화 차이 (Hap1 - Hap2)",
          y="빈도")
-  print(p2)
 }
 
 # 3. Top 20 ASM (FDR 기준)
@@ -254,7 +207,7 @@ if (has_fdr && has_diff) {
                            format(top_asm$end,   scientific=FALSE))
   top_asm$log10_fdr <- -log10(top_asm$fdr + 1e-300)
 
-  p3 <- ggplot(top_asm, aes(x=reorder(region, log10_fdr), y=diff_methy)) +
+  plots[["03_top20_asm"]] <- ggplot(top_asm, aes(x=reorder(region, log10_fdr), y=diff_methy)) +
     geom_bar(stat="identity", aes(fill=diff_methy > 0)) +
     coord_flip() +
     scale_fill_manual(values=c("steelblue", "tomato"),
@@ -263,7 +216,6 @@ if (has_fdr && has_diff) {
     labs(title=sprintf("[%s] Top 20 ASM 영역 (FDR 기준)", sample_label),
          x="Genomic Region", y="메틸화 차이 (Hap1 - Hap2)") +
     theme(axis.text.y=element_text(size=8))
-  print(p3)
 }
 
 # 4. ASM 크기 vs 유의성
@@ -288,10 +240,10 @@ if (has_fdr && has_diff && has_length) {
       labs(title=sprintf("[%s] ASM 크기와 유의성", sample_label),
            x="ASM 길이 (bp)", y="-log10(FDR)")
   }
-  print(p4)
+  plots[["04_size_vs_significance"]] <- p4
 }
 
-dev.off()
+save_svg_plots(plots, opt$`output-svg-dir`, width=12, height=8)
 cat("시각화 완료\n")
 
 # ================================================================================
@@ -320,5 +272,5 @@ if (has_nCG) {
   cat(sprintf("평균 CpG 사이트 수: %.1f\n", mean(asm_results$nCG, na.rm=TRUE)))
 }
 cat("================================================================================\n")
-cat(sprintf("\n분석 완료!\n결과 파일: %s\n그래프 파일: %s\n",
-            opt$`output-csv`, opt$`output-pdf`))
+cat(sprintf("\n분석 완료!\n결과 파일: %s\n그래프 디렉토리: %s\n",
+            opt$`output-csv`, opt$`output-svg-dir`))
